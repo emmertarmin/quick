@@ -1,0 +1,59 @@
+{
+  "include": [
+    "apps/*/src/**/*.ts",
+    "packages/*/src/**/*.ts"
+  ],
+  "exclude": [
+    "apps/*/dist",
+    "packages/*/dist",
+    "node_modules"
+  ],
+  "references": [
+    {
+      "path": "./packages/shared"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/sdk"
+    },
+    {
+      "path": "./packages/cli"
+    },
+    {
+      "path": "./apps/server"
+    }
+  ],
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "types": [
+      "bun"
+    ],
+    "paths": {
+      "@quick/shared": [
+        "./packages/shared/src/index.ts"
+      ],
+      "@quick/db": [
+        "./packages/db/src/index.ts"
+      ],
+      "@quick/sdk": [
+        "./packages/sdk/src/index.ts"
+      ],
+      "@quick/db/*": [
+        "./packages/db/src/*"
+      ]
+    }
+  }
+}

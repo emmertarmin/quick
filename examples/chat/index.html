@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick Chat Example</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Quick Chat Example</h1>
+      <p id="user-status">Checking sign-in...</p>
+    </header>
+
+    <main>
+      <section aria-labelledby="messages-heading">
+        <h2 id="messages-heading">Messages</h2>
+        <p id="status">Loading messages...</p>
+        <ol id="messages" aria-live="polite"></ol>
+      </section>
+
+      <form id="new-message-form">
+        <label for="new-message-body">Message</label>
+        <input id="new-message-body" name="message" autocomplete="off" required />
+        <button type="submit">Send</button>
+      </form>
+    </main>
+
+    <script type="module">
+      import { createQuickClient } from "/quick.js";
+
+      const quick = createQuickClient();
+      const messages = quick.db.collection("messages");
+
+      const userStatus = document.querySelector("#user-status");
+      const status = document.querySelector("#status");
+      const list = document.querySelector("#messages");
+      const form = document.querySelector("#new-message-form");
+      const bodyInput = document.querySelector("#new-message-body");
+
+      let currentUser = null;
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const body = bodyInput.value.trim();
+        if (!body || !currentUser) {
+          return;
+        }
+
+        const now = new Date().toISOString();
+        await messages.create({
+          body,
+          user_id: currentUser.id,
+          user_email: currentUser.email ?? currentUser.id,
+          user_name: currentUser.name ?? null,
+          created_at: now,
+        });
+
+        bodyInput.value = "";
+        await loadMessages();
+      });
+
+      function formatDate(value) {
+        const date = new Date(String(value ?? ""));
+        if (Number.isNaN(date.getTime())) {
+          return "";
+        }
+
+        return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      }
+
+      function renderMessage(message) {
+        const item = document.createElement("li");
+
+        const meta = document.createElement("div");
+        meta.className = "message-meta";
+
+        const author = document.createElement("strong");
+        author.textContent = String(message.user_email ?? "Unknown user");
+
+        const time = document.createElement("time");
+        time.dateTime = String(message.created_at ?? "");
+        time.textContent = formatDate(message.created_at);
+
+        const body = document.createElement("p");
+        body.textContent = String(message.body ?? "");
+
+        meta.append(author, time);
+        item.append(meta, body);
+        return item;
+      }
+
+      async function loadMessages() {
+        try {
+          const allMessages = await messages.all();
+          allMessages.sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+
+          list.replaceChildren(...allMessages.map(renderMessage));
+          status.textContent = allMessages.length === 0 ? "No messages yet." : `${allMessages.length} message(s).`;
+        } catch (error) {
+          console.error(error);
+          status.textContent = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      async function main() {
+        currentUser = await quick.identity.current();
+
+        if (!currentUser) {
+          userStatus.textContent = "You are not signed in.";
+          form.hidden = true;
+          return;
+        }
+
+        userStatus.textContent = `Signed in as ${currentUser.email ?? currentUser.id}`;
+        form.hidden = false;
+        messages.subscribe({
+          onCreate: loadMessages,
+          onUpdate: loadMessages,
+          onDelete: loadMessages,
+          onError: (error) => console.error("Message subscription failed", error),
+        });
+
+        await loadMessages();
+      }
+
+      await main();
+    </script>
+  </body>
+</html>

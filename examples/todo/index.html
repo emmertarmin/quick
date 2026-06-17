@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick Todo Example</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <h1>Quick Todo Example</h1>
+
+    <form id="new-todo-form">
+      <label>
+        Todo
+        <input id="new-todo-title" name="title" required />
+      </label>
+      <button type="submit">Add</button>
+    </form>
+
+    <h2>Todos</h2>
+    <p id="status">Loading todos...</p>
+    <ul id="todos"></ul>
+
+    <script type="module">
+      import { createQuickClient } from "/quick.js";
+
+      const quick = createQuickClient();
+      const todos = quick.db.collection("todos");
+
+      const status = document.querySelector("#status");
+      const list = document.querySelector("#todos");
+      const form = document.querySelector("#new-todo-form");
+      const titleInput = document.querySelector("#new-todo-title");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const title = titleInput.value.trim();
+        if (!title) {
+          return;
+        }
+
+        await todos.create({
+          title,
+          done: false,
+          created_at: new Date().toISOString(),
+        });
+
+        titleInput.value = "";
+        await main();
+      });
+
+      async function toggleTodo(todo) {
+        await todos.update(todo.id, {
+          done: !todo.done,
+          updated_at: new Date().toISOString(),
+        });
+
+        await main();
+      }
+
+      function renderTodo(todo) {
+        const item = document.createElement("li");
+
+        const label = document.createElement("span");
+        label.className = `todo-title${todo.done ? " done" : ""}`;
+        label.textContent = todo.title;
+
+        const toggleForm = document.createElement("form");
+        toggleForm.style.display = "inline";
+
+        const toggleButton = document.createElement("button");
+        toggleButton.type = "submit";
+        toggleButton.textContent = todo.done ? "Mark open" : "Mark done";
+
+        toggleForm.append(" ", toggleButton);
+        toggleForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          await toggleTodo(todo);
+        });
+
+        item.append(label, toggleForm);
+        return item;
+      }
+
+      async function main() {
+        try {
+          const allTodos = await todos.all();
+          allTodos.sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+
+          list.replaceChildren(...allTodos.map(renderTodo));
+          status.textContent = allTodos.length === 0 ? "No todos yet." : `${allTodos.length} todo(s).`;
+        } catch (error) {
+          console.error(error);
+          status.textContent = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      await main();
+    </script>
+  </body>
+</html>

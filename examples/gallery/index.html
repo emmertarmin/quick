@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick Gallery Example</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        line-height: 1.4;
+        margin: 2rem auto;
+        max-width: 56rem;
+        padding: 0 1rem;
+      }
+
+      form,
+      #status {
+        margin: 1rem 0;
+      }
+
+      .gallery {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        list-style: none;
+        padding: 0;
+      }
+
+      .card {
+        border: 1px solid #ddd;
+        border-radius: 0.75rem;
+        overflow: hidden;
+      }
+
+      .card img {
+        aspect-ratio: 1;
+        display: block;
+        object-fit: cover;
+        width: 100%;
+      }
+
+      .card div {
+        padding: 0.75rem;
+      }
+
+      .name {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+
+      .meta {
+        color: #666;
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Quick Gallery Example</h1>
+    <p>Upload public images, list their Quick file metadata, and delete them again.</p>
+
+    <form id="upload-form">
+      <label>
+        Image
+        <input id="image-input" name="file" type="file" accept="image/*" required />
+      </label>
+      <button type="submit">Upload</button>
+    </form>
+
+    <p id="status">Loading images...</p>
+    <ul id="gallery" class="gallery"></ul>
+
+    <script type="module">
+      import { createQuickClient } from "/quick.js";
+
+      const quick = createQuickClient();
+      const form = document.querySelector("#upload-form");
+      const input = document.querySelector("#image-input");
+      const status = document.querySelector("#status");
+      const gallery = document.querySelector("#gallery");
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const file = input.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith("image/")) {
+          status.textContent = "Please choose an image file.";
+          return;
+        }
+
+        try {
+          status.textContent = `Uploading ${file.name}...`;
+          await quick.files.upload(file);
+          input.value = "";
+          await loadImages();
+        } catch (error) {
+          console.error(error);
+          status.textContent = error instanceof Error ? error.message : String(error);
+        }
+      });
+
+      function formatBytes(bytes) {
+        return new Intl.NumberFormat(undefined, {
+          maximumFractionDigits: 1,
+          style: "unit",
+          unit: "byte",
+          unitDisplay: "short",
+        }).format(bytes);
+      }
+
+      function renderImage(file) {
+        const item = document.createElement("li");
+        item.className = "card";
+
+        const image = document.createElement("img");
+        image.src = file.url;
+        image.alt = file.name;
+        image.loading = "lazy";
+
+        const details = document.createElement("div");
+
+        const name = document.createElement("p");
+        name.className = "name";
+        name.textContent = file.name;
+
+        const meta = document.createElement("p");
+        meta.className = "meta";
+        meta.textContent = `${file.content_type} · ${formatBytes(file.size)}`;
+
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.textContent = "Delete";
+        deleteButton.addEventListener("click", async () => {
+          deleteButton.disabled = true;
+          status.textContent = `Deleting ${file.name}...`;
+          await quick.files.delete(file.id);
+          await loadImages();
+        });
+
+        details.append(name, meta, deleteButton);
+        item.append(image, details);
+        return item;
+      }
+
+      async function loadImages() {
+        try {
+          const files = await quick.files.all();
+          const images = files
+            .filter((file) => file.content_type.startsWith("image/"))
+            .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+
+          gallery.replaceChildren(...images.map(renderImage));
+          status.textContent = images.length === 0 ? "No images uploaded yet." : `${images.length} image(s).`;
+        } catch (error) {
+          console.error(error);
+          status.textContent = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      await loadImages();
+    </script>
+  </body>
+</html>

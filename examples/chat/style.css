@@ -1,0 +1,84 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1f2937;
+  background: #f8fafc;
+}
+
+body {
+  max-width: 42rem;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+header {
+  margin-bottom: 2rem;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+#user-status,
+#status {
+  color: #64748b;
+}
+
+#messages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  list-style: none;
+  padding: 0;
+}
+
+#messages li {
+  padding: 0.8rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: white;
+}
+
+.message-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.35rem;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.message-meta strong {
+  color: #1f2937;
+}
+
+.message-meta time {
+  white-space: nowrap;
+}
+
+#messages p {
+  margin-bottom: 0;
+  white-space: pre-wrap;
+}
+
+form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+label {
+  font-weight: 600;
+}
+
+input {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+}
+
+button {
+  padding: 0.45rem 0.7rem;
+  cursor: pointer;
+}

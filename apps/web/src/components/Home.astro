@@ -1,0 +1,165 @@
+<main class="shell">
+  <section class="hero">
+    <p class="eyebrow">Quick local platform</p>
+    <h1>Sites</h1>
+  </section>
+
+  <section id="sites-list" class="sites-list">Loading sites…</section>
+</main>
+
+<script is:inline type="module">
+  import { createQuickClient } from "/quick.js";
+
+  const quick = createQuickClient();
+
+  const elements = {
+    sitesList: document.querySelector("#sites-list"),
+  };
+
+  function formatDate(value) {
+    if (!value) return "Unknown deploy time";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  }
+
+  function siteDetail(site) {
+    const parts = [];
+
+    if (site.lastDeployedAt) {
+      parts.push(`deployed ${formatDate(site.lastDeployedAt)}`);
+    } else {
+      parts.push("runtime files present; no deploy metadata recorded");
+    }
+
+    if (site.lastDeployedBy?.email || site.lastDeployedBy?.name || site.lastDeployedBy?.id) {
+      parts.push(`by ${site.lastDeployedBy.email || site.lastDeployedBy.name || site.lastDeployedBy.id}`);
+    }
+
+    if (typeof site.fileCount === "number") {
+      parts.push(`${site.fileCount} file${site.fileCount === 1 ? "" : "s"}`);
+    }
+
+    if (!site.hasIndex) {
+      parts.push("missing index.html");
+    }
+
+    return parts.join(" · ");
+  }
+
+  function renderSites(sites) {
+    if (sites.length === 0) {
+      elements.sitesList.textContent = "No deployed sites found. Deploy one with `quick deploy <dir> <site>`.";
+      return;
+    }
+
+    elements.sitesList.replaceChildren(
+      ...sites.map((site) => {
+        const item = document.createElement("a");
+        item.className = "site";
+        item.href = site.url;
+        if (!site.hasIndex) {
+          item.setAttribute("aria-disabled", "true");
+          item.tabIndex = -1;
+        }
+
+        const title = document.createElement("strong");
+        title.textContent = site.site;
+        const detail = document.createElement("span");
+        detail.textContent = siteDetail(site);
+        item.append(title, detail);
+        return item;
+      }),
+    );
+  }
+
+  async function refreshSites() {
+    elements.sitesList.textContent = "Loading sites…";
+
+    try {
+      renderSites(await quick.sites.all());
+    } catch (error) {
+      elements.sitesList.innerHTML = `<p class="error">Could not load sites: ${error instanceof Error ? error.message : String(error)}</p>`;
+    }
+  }
+
+  await refreshSites();
+</script>
+
+<style>
+  .shell {
+    width: min(76rem, calc(100% - 4rem));
+    margin: 0 auto;
+    padding: 5rem 0;
+  }
+
+  .hero {
+    margin-bottom: 3rem;
+  }
+
+  .eyebrow {
+    margin: 0 0 0.75rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: clamp(3rem, 8vw, 7rem);
+    font-weight: 700;
+    letter-spacing: -0.06em;
+    line-height: 0.9;
+  }
+
+  .sites-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 2rem;
+  }
+
+  :global(.site) {
+    display: block;
+    min-height: 9rem;
+    padding: 1.25rem 0;
+    border-top: 1px solid var(--border);
+    color: inherit;
+    text-decoration: none;
+  }
+
+  :global(.site:hover strong) {
+    text-decoration: underline;
+  }
+
+  :global(.site strong) {
+    display: block;
+    margin-bottom: 0.75rem;
+    font-size: 1.4rem;
+    font-weight: 650;
+  }
+
+  :global(.site span) {
+    display: block;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+
+  :global(.site[aria-disabled="true"]) {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  @media (max-width: 700px) {
+    .shell {
+      width: min(100% - 2rem, 76rem);
+      padding: 3rem 0;
+    }
+
+    .sites-list {
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
+  }
+</style>

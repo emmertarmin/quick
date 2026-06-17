@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+packages/*/dist/
+apps/web/.astro/
+*.tsbuildinfo
+
+# Bun / test caches
+.bun/
+coverage/
+.nyc_output/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local runtime data
+runtime/
+
+# Local databases
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+
+# Generated files
+packages/db/drizzle.config.js
+packages/db/drizzle.config.d.ts
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,31 @@
+{
+  "name": "@emmertarmin/quick",
+  "version": "0.1.0",
+  "description": "Command line tools for self-hosted Quick sites.",
+  "type": "module",
+  "bin": {
+    "quick": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "bun --watch run src/index.ts",
+    "build": "rm -rf dist && bun build ./src/index.ts --outfile dist/index.js --target bun",
+    "tsc": "tsc -p tsconfig.json --noEmit",
+    "test": "bun test",
+    "prepack": "bun run build",
+    "prepublishOnly": "bun run tsc && bun test"
+  },
+  "devDependencies": {
+    "@openauthjs/openauth": "^0.4.3",
+    "@types/bun": "latest",
+    "typescript": "latest"
+  }
+}

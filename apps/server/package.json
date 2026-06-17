@@ -1,0 +1,19 @@
+{
+  "name": "@quick/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "@hono/swagger-ui": "latest",
+    "@hono/zod-openapi": "latest",
+    "@openauthjs/openauth": "^0.4.3",
+    "@quick/db": "workspace:*",
+    "@quick/shared": "workspace:*",
+    "hono": "latest",
+    "valibot": "^1.4.1",
+    "zod": "latest"
+  }
+}

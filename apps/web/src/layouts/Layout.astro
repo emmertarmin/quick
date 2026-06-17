@@ -1,0 +1,148 @@
+---
+import { Icon } from "astro-icon/components";
+
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+}
+
+const { title = "Quick platform" } = Astro.props;
+const isDocsActive = Astro.url.pathname === "/docs" || Astro.url.pathname.startsWith("/docs/");
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="topbar" aria-live="polite">
+      <a class="brand" href="/">Quick</a>
+      <nav class="primary-nav" aria-label="Primary">
+        <a href="/docs/" class:list={[{ active: isDocsActive }]} aria-current={isDocsActive ? "page" : undefined}>Docs</a>
+      </nav>
+      <nav class="account" aria-label="Account">
+        <span id="user-label">Checking session…</span>
+        <button id="logout-button" class="icon-button" type="button" aria-label="Log out" title="Log out">
+          <Icon name="lucide:log-out" size="1rem" aria-hidden="true" />
+        </button>
+      </nav>
+    </header>
+
+    <slot />
+
+    <script is:inline type="module">
+      import { createQuickClient } from "/quick.js";
+
+      const quick = createQuickClient();
+      const userLabel = document.querySelector("#user-label");
+      const logoutButton = document.querySelector("#logout-button");
+
+      function formatUser(user) {
+        return user?.email || user?.name || user?.id || "Not logged in";
+      }
+
+      function setBusy(button, busy) {
+        button.disabled = busy;
+        button.setAttribute("aria-busy", String(busy));
+      }
+
+      async function refreshSession() {
+        const session = await quick.auth.session();
+        userLabel.textContent = formatUser(session.user);
+      }
+
+      logoutButton.addEventListener("click", async () => {
+        setBusy(logoutButton, true);
+        try {
+          await quick.auth.logout();
+          await refreshSession();
+        } finally {
+          setBusy(logoutButton, false);
+        }
+      });
+
+      await refreshSession();
+    </script>
+  </body>
+</html>
+
+<style>
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 2rem;
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .brand {
+    color: inherit;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .primary-nav,
+  .account {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .primary-nav {
+    justify-self: center;
+  }
+
+  .account {
+    justify-self: end;
+  }
+
+  .primary-nav a {
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+  }
+
+  .primary-nav a:hover {
+    text-decoration: underline;
+  }
+
+  .primary-nav a.active,
+  .primary-nav a[aria-current="page"] {
+    border-color: var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 650;
+  }
+
+  @media (max-width: 700px) {
+    .topbar {
+      grid-template-columns: 1fr;
+      justify-items: start;
+      gap: 0.75rem;
+      padding: 1rem;
+    }
+
+    .primary-nav,
+    .account {
+      justify-self: start;
+      flex-wrap: wrap;
+    }
+  }
+</style>

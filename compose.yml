@@ -1,0 +1,32 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    network_mode: host
+    environment:
+      QUICK_DOMAIN: ${QUICK_DOMAIN:?QUICK_DOMAIN must be set}
+    volumes:
+      - ./infra/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./apps/web/dist:/srv/quick/web:ro
+      - ./runtime/sites:/srv/quick/sites:ro
+      - ./runtime/certs/nginx:/etc/nginx/certs:ro
+    depends_on:
+      - server
+
+  server:
+    image: oven/bun:1
+    working_dir: /app
+    command: bun run --cwd apps/server dev
+    environment:
+      PORT: 3000
+      QUICK_DOMAIN: ${QUICK_DOMAIN:?QUICK_DOMAIN must be set}
+      QUICK_SCHEME: ${QUICK_SCHEME:-https}
+      DATABASE_URL: /data/db/quick.sqlite
+      QUICK_SITES_ROOT: /data/sites
+      QUICK_FILES_ROOT: /data/files
+    volumes:
+      - .:/app
+      - ./runtime/db:/data/db
+      - ./runtime/sites:/data/sites
+      - ./runtime/files:/data/files
+    ports:
+      - "127.0.0.1:3000:3000"

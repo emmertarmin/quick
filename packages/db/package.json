@@ -1,0 +1,22 @@
+{
+  "name": "@quick/db",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@quick/shared": "workspace:*",
+    "drizzle-orm": "latest"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^12.10.0",
+    "drizzle-kit": "latest"
+  }
+}

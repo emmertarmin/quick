@@ -1,0 +1,15 @@
+{
+  "name": "@quick/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 0.0.0.0",
+    "build": "astro build"
+  },
+  "dependencies": {
+    "@iconify-json/lucide": "^1.2.113",
+    "astro": "latest",
+    "astro-icon": "^1.1.5",
+    "github-slugger": "^2.0.0"
+  }
+}

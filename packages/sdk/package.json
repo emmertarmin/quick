@@ -1,0 +1,14 @@
+{
+  "name": "@quick/sdk",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build:browser": "bun build ./src/index.ts --outfile dist/browser/quick.js --target browser --format esm"
+  },
+  "dependencies": {
+    "@quick/shared": "workspace:*"
+  }
+}

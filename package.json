@@ -1,0 +1,30 @@
+{
+  "name": "quick",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "docker compose up",
+    "dev:web": "QUICK_DOMAIN=${QUICK_DOMAIN:-local.example.com} QUICK_PLATFORM_PROXY=${QUICK_PLATFORM_PROXY:-https://${QUICK_DOMAIN:-local.example.com}} bun run --cwd apps/web dev",
+    "cli": "bun packages/cli/index.ts",
+    "cert:issue": "./infra/acme/issue-local-cert.sh",
+    "tsc": "tsc -p tsconfig.check.json",
+    "build": "bun run tsc && bun run --cwd packages/sdk build:browser && bun run --cwd apps/web build",
+    "sdk:build:browser": "bun run --cwd packages/sdk build:browser",
+    "db:generate": "bun run --cwd packages/db db:generate",
+    "db:migrate": "bun run --cwd packages/db db:migrate",
+    "db:push": "bun run --cwd packages/db db:push",
+    "db:studio": "bun run --cwd packages/db db:studio",
+    "test:e2e": "docker compose up -d --force-recreate server nginx && playwright test",
+    "test:e2e:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "@types/bun": "latest",
+    "drizzle-kit": "latest",
+    "typescript": "latest"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "references": [],
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [
+    "apps/*/src/**/*.ts",
+    "packages/*/src/**/*.ts"
+  ],
+  "exclude": [
+    "apps/*/dist",
+    "packages/*/dist",
+    "node_modules"
+  ]
+}
