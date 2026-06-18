@@ -21,7 +21,7 @@ server {
   root /srv/quick/web;
 
   location = /quick.js {
-    proxy_pass http://127.0.0.1:3000/quick.js;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/quick.js;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site "";
     proxy_set_header X-Forwarded-Host $host;
@@ -30,7 +30,10 @@ server {
   }
 
   location = /api {
-    proxy_pass http://127.0.0.1:3000/;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site "";
     proxy_set_header X-Forwarded-Host $host;
@@ -39,7 +42,10 @@ server {
   }
 
   location /api/ {
-    proxy_pass http://127.0.0.1:3000/;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site "";
     proxy_set_header X-Forwarded-Host $host;
@@ -48,7 +54,7 @@ server {
   }
 
   location = /authorize {
-    proxy_pass http://127.0.0.1:3000/authorize;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/authorize;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site "";
     proxy_set_header X-Forwarded-Host $host;
@@ -57,7 +63,7 @@ server {
   }
 
   location = /token {
-    proxy_pass http://127.0.0.1:3000/token;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/token;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site "";
     proxy_set_header X-Forwarded-Host $host;
@@ -66,7 +72,7 @@ server {
   }
 
   location /.well-known/ {
-    proxy_pass http://127.0.0.1:3000/.well-known/;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/.well-known/;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site "";
     proxy_set_header X-Forwarded-Host $host;
@@ -75,7 +81,7 @@ server {
   }
 
   location /code/ {
-    proxy_pass http://127.0.0.1:3000/code/;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/code/;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site "";
     proxy_set_header X-Forwarded-Host $host;
@@ -88,7 +94,7 @@ server {
   }
 
   location / {
-    proxy_pass http://127.0.0.1:4321;
+    proxy_pass http://${QUICK_WEB_DEV_UPSTREAM};
     proxy_connect_timeout 300ms;
     proxy_read_timeout 1h;
     proxy_send_timeout 1h;
@@ -117,7 +123,7 @@ server {
 
   location = /_quick_auth_verify {
     internal;
-    proxy_pass http://127.0.0.1:3000/internal/auth/verify;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/internal/auth/verify;
     proxy_pass_request_body off;
     proxy_set_header Content-Length "";
     proxy_set_header Host $host;
@@ -134,7 +140,7 @@ server {
   }
 
   location = /quick.js {
-    proxy_pass http://127.0.0.1:3000/quick.js;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/quick.js;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site $quick_site;
     proxy_set_header X-Forwarded-Host $host;
@@ -143,7 +149,10 @@ server {
   }
 
   location = /api {
-    proxy_pass http://127.0.0.1:3000/;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site $quick_site;
     proxy_set_header X-Forwarded-Host $host;
@@ -152,7 +161,10 @@ server {
   }
 
   location /api/ {
-    proxy_pass http://127.0.0.1:3000/;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site $quick_site;
     proxy_set_header X-Forwarded-Host $host;
@@ -161,7 +173,7 @@ server {
   }
 
   location = /authorize {
-    proxy_pass http://127.0.0.1:3000/authorize;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/authorize;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site $quick_site;
     proxy_set_header X-Forwarded-Host $host;
@@ -170,7 +182,7 @@ server {
   }
 
   location = /token {
-    proxy_pass http://127.0.0.1:3000/token;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/token;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site $quick_site;
     proxy_set_header X-Forwarded-Host $host;
@@ -179,7 +191,7 @@ server {
   }
 
   location /.well-known/ {
-    proxy_pass http://127.0.0.1:3000/.well-known/;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/.well-known/;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site $quick_site;
     proxy_set_header X-Forwarded-Host $host;
@@ -188,7 +200,7 @@ server {
   }
 
   location /code/ {
-    proxy_pass http://127.0.0.1:3000/code/;
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/code/;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site $quick_site;
     proxy_set_header X-Forwarded-Host $host;

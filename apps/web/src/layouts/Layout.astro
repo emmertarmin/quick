@@ -1,6 +1,4 @@
 ---
-import { Icon } from "astro-icon/components";
-
 import "../styles/global.css";
 
 interface Props {
@@ -27,9 +25,8 @@ const isDocsActive = Astro.url.pathname === "/docs" || Astro.url.pathname.starts
       </nav>
       <nav class="account" aria-label="Account">
         <span id="user-label">Checking session…</span>
-        <button id="logout-button" class="icon-button" type="button" aria-label="Log out" title="Log out">
-          <Icon name="lucide:log-out" size="1rem" aria-hidden="true" />
-        </button>
+        <button id="login-button" type="button" hidden>Log in</button>
+        <button id="logout-button" type="button" hidden>Log out</button>
       </nav>
     </header>
 
@@ -40,6 +37,7 @@ const isDocsActive = Astro.url.pathname === "/docs" || Astro.url.pathname.starts
 
       const quick = createQuickClient();
       const userLabel = document.querySelector("#user-label");
+      const loginButton = document.querySelector("#login-button");
       const logoutButton = document.querySelector("#logout-button");
 
       function formatUser(user) {
@@ -51,16 +49,33 @@ const isDocsActive = Astro.url.pathname === "/docs" || Astro.url.pathname.starts
         button.setAttribute("aria-busy", String(busy));
       }
 
+      function setSessionState(session) {
+        userLabel.textContent = formatUser(session.user);
+        loginButton.hidden = session.authenticated;
+        logoutButton.hidden = !session.authenticated;
+      }
+
       async function refreshSession() {
         const session = await quick.auth.session();
-        userLabel.textContent = formatUser(session.user);
+        setSessionState(session);
       }
+
+      loginButton.addEventListener("click", async () => {
+        setBusy(loginButton, true);
+        try {
+          const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+          const login = await quick.auth.login({ returnTo });
+          window.location.assign(login.authorizationUrl);
+        } finally {
+          setBusy(loginButton, false);
+        }
+      });
 
       logoutButton.addEventListener("click", async () => {
         setBusy(logoutButton, true);
         try {
-          await quick.auth.logout();
-          await refreshSession();
+          const session = await quick.auth.logout();
+          setSessionState(session);
         } finally {
           setBusy(logoutButton, false);
         }
@@ -112,11 +127,8 @@ const isDocsActive = Astro.url.pathname === "/docs" || Astro.url.pathname.starts
     text-decoration: none;
   }
 
-  .icon-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: inherit;
+  .account [hidden] {
+    display: none;
   }
 
   .primary-nav a:hover {

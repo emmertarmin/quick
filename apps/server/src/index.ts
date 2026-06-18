@@ -1,11 +1,13 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
+import { websocket } from "hono/bun";
 import { healthResponseSchema } from "./schemas";
 import { authRoutes } from "./routes/auth";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
 import { registerSdkRoutes } from "./routes/sdk";
 import { registerSiteRoutes } from "./routes/sites";
+import { registerRealtimeRoutes } from "./routes/realtime";
 import { port, publicApiBase } from "./config";
 
 const app = new OpenAPIHono();
@@ -38,6 +40,7 @@ registerSdkRoutes(app);
 registerCollectionRoutes(app);
 registerFileRoutes(app);
 registerSiteRoutes(app);
+registerRealtimeRoutes(app);
 
 app.doc("/doc", {
   openapi: "3.0.0",
@@ -55,6 +58,7 @@ if (import.meta.main) {
   Bun.serve({
     port,
     fetch: app.fetch,
+    websocket,
   });
 
   console.log(`Server listening internally on http://0.0.0.0:${port}`);

@@ -6,6 +6,7 @@ The examples are small on purpose. Each one is a plain static site that imports 
 quick deploy ./examples/todo todo
 quick deploy ./examples/chat chat
 quick deploy ./examples/gallery gallery
+quick deploy ./examples/realtime realtime
 ```
 
 ## The collection theme
@@ -15,6 +16,7 @@ Quick examples are not templates for large frameworks. They are little pressure 
 - [Todo](./todo/) shows basic database handling with `quick.db.collection(...)`.
 - [Chat](./chat/) adds identity and `collection.subscribe(...)` for live updates over SSE.
 - [Gallery](./gallery/) demonstrates `quick.files` for uploads, file metadata, public URLs, and deletion.
+- Realtime demonstrates `quick.realtime.presence(...)` for live presence and viewport-relative cursors.
 
 Read them as recipes. Copy the smallest useful piece, change the collection name, and let the next app grow from there.
 

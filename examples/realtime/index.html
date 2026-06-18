@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick Realtime Example</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <aside class="presence-panel" aria-labelledby="presence-heading">
+      <h1 id="presence-heading">Realtime cursors</h1>
+      <p id="status">Connecting...</p>
+      <h2>Present</h2>
+      <ul id="people"></ul>
+    </aside>
+
+    <main>
+      <p>Move your mouse or finger around this page. Other connected users will see your cursor mapped to their viewport.</p>
+      <p class="hint">Coordinates are sent as relative <code>x/y</code> values, so each cursor lands in the same proportional place on every screen size.</p>
+    </main>
+
+    <div id="cursors" aria-hidden="true"></div>
+
+    <script type="module">
+      import { createQuickClient } from "/quick.js";
+
+      const quick = createQuickClient();
+      const room = quick.realtime.presence("cursors");
+      const status = document.querySelector("#status");
+      const people = document.querySelector("#people");
+      const cursors = document.querySelector("#cursors");
+      const members = new Map();
+      let selfConnectionId = null;
+      let currentUser = null;
+      let pointer = { x: 0.5, y: 0.5 };
+      let pendingUpdate = false;
+
+      function hueFor(value) {
+        let hash = 0;
+        for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+        return hash % 360;
+      }
+
+      function colorFor(value) {
+        return `hsl(${hueFor(value)} 80% 55%)`;
+      }
+
+      function labelColorFor(value) {
+        const hue = hueFor(value) / 60;
+        const chroma = 0.8 * (1 - Math.abs(2 * 0.55 - 1));
+        const x = chroma * (1 - Math.abs((hue % 2) - 1));
+        const match = 0.55 - chroma / 2;
+        const [r, g, b] = hue < 1 ? [chroma, x, 0] : hue < 2 ? [x, chroma, 0] : hue < 3 ? [0, chroma, x] : hue < 4 ? [0, x, chroma] : hue < 5 ? [x, 0, chroma] : [chroma, 0, x];
+        const luminance = 0.2126 * (r + match) + 0.7152 * (g + match) + 0.0722 * (b + match);
+        return luminance > 0.58 ? "#111827" : "white";
+      }
+
+      function displayName(member) {
+        return member.user?.name || member.user?.email || member.user?.id || member.connection_id.slice(0, 8);
+      }
+
+      function upsertMember(member) {
+        members.set(member.connection_id, member);
+        render();
+      }
+
+      function removeMember(member) {
+        members.delete(member.connection_id);
+        render();
+      }
+
+      function renderPeople() {
+        const items = [...members.values()].sort((a, b) => displayName(a).localeCompare(displayName(b))).map((member) => {
+          const item = document.createElement("li");
+          const dot = document.createElement("span");
+          dot.className = "dot";
+          dot.style.background = colorFor(member.user?.id || member.connection_id);
+          item.append(dot, document.createTextNode(displayName(member)));
+          if (member.connection_id === selfConnectionId) item.append(document.createTextNode(" (you)"));
+          return item;
+        });
+
+        people.replaceChildren(...items);
+      }
+
+      function renderCursors() {
+        const nodes = [];
+        for (const member of members.values()) {
+          if (member.connection_id === selfConnectionId) continue;
+
+          const state = member.state || {};
+          const x = Math.max(0, Math.min(1, Number(state.x ?? 0.5)));
+          const y = Math.max(0, Math.min(1, Number(state.y ?? 0.5)));
+          const cursor = document.createElement("div");
+          cursor.className = "cursor";
+          cursor.style.left = `${x * 100}vw`;
+          cursor.style.top = `${y * 100}vh`;
+          const colorKey = member.user?.id || member.connection_id;
+          cursor.style.setProperty("--cursor-color", colorFor(colorKey));
+          cursor.style.setProperty("--cursor-label-color", labelColorFor(colorKey));
+
+          const label = document.createElement("span");
+          label.textContent = displayName(member);
+          cursor.append(label);
+          nodes.push(cursor);
+        }
+
+        cursors.replaceChildren(...nodes);
+      }
+
+      function render() {
+        renderPeople();
+        renderCursors();
+      }
+
+      function sendPointer() {
+        pendingUpdate = false;
+        room.update(pointer);
+      }
+
+      function queuePointerUpdate(clientX, clientY) {
+        pointer = {
+          x: clientX / Math.max(1, window.innerWidth),
+          y: clientY / Math.max(1, window.innerHeight),
+        };
+
+        if (!pendingUpdate) {
+          pendingUpdate = true;
+          requestAnimationFrame(sendPointer);
+        }
+      }
+
+      window.addEventListener("pointermove", (event) => queuePointerUpdate(event.clientX, event.clientY), { passive: true });
+      window.addEventListener("pointerdown", (event) => queuePointerUpdate(event.clientX, event.clientY), { passive: true });
+
+      room.onSnapshot((snapshot) => {
+        members.clear();
+        for (const member of snapshot) upsertMember(member);
+      });
+      room.onJoin(upsertMember);
+      room.onUpdate(upsertMember);
+      room.onLeave(removeMember);
+      room.onError((error) => {
+        console.error(error);
+        status.textContent = "Realtime connection failed.";
+      });
+
+      room.ready.then(() => {
+        status.textContent = currentUser ? `Signed in as ${currentUser.email || currentUser.id}` : "Connected anonymously";
+        room.join(pointer);
+      });
+
+      try {
+        currentUser = await quick.identity.current();
+      } catch (error) {
+        console.warn("Could not load identity", error);
+      }
+    </script>
+  </body>
+</html>

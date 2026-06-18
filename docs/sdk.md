@@ -38,6 +38,7 @@ The client exposes:
 - `quick.identity`
 - `quick.db`
 - `quick.files`
+- `quick.realtime`
 - `quick.sites`
 
 ## Auth and identity
@@ -115,6 +116,36 @@ unsubscribe();
 ```
 
 The current implementation uses `EventSource` / Server-Sent Events under the hood. Mutations still happen through normal HTTP requests; successful writes are broadcast to matching subscribers for the same site and collection.
+
+## Realtime channels and presence
+
+Use `quick.realtime` for bidirectional, ephemeral WebSocket messages that should not be persisted to the database:
+
+<div class="code-title">index.html</div>
+
+```js
+const room = quick.realtime.presence("cursors");
+
+room.onSnapshot((members) => renderPeople(members));
+room.onJoin((member) => addPerson(member));
+room.onUpdate((member) => moveCursor(member));
+room.onLeave((member) => removePerson(member));
+
+await room.ready;
+room.join({ x: 0.5, y: 0.5 });
+room.update({ x: pointerX / innerWidth, y: pointerY / innerHeight });
+```
+
+For generic events:
+
+```js
+const channel = quick.realtime.channel("game");
+channel.on("player:move", (move, message) => updatePlayer(message.meta.connection_id, move));
+await channel.ready;
+channel.send("player:move", { x: 10, y: 20 });
+```
+
+Realtime messages are scoped to the current Quick site and channel. They are intended for presence, cursors, game movement, typing indicators, and other transient collaboration state. Store durable state such as scores or history in `quick.db`.
 
 ## Files
 

@@ -8,7 +8,7 @@ export default defineConfig({
   integrations: [
     icon({
       include: {
-        lucide: ["log-out"],
+        lucide: ["log-in", "log-out"],
       },
     }),
   ],

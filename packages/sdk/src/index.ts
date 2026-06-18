@@ -81,11 +81,57 @@ export type QuickSites = {
   get(site: string): Promise<QuickSite | { site: string; exists: false; url: string; hasIndex: false }>;
 };
 
+export type QuickRealtimeMessage<T = unknown> = {
+  type: "event";
+  event: string;
+  payload: T;
+  meta: {
+    id: string;
+    site: string;
+    channel: string;
+    connection_id: string;
+    user: QuickUser | null;
+    sent_at: string;
+  };
+};
+
+export type QuickPresenceMember<T extends JsonBlob = JsonBlob> = {
+  connection_id: string;
+  user: QuickUser | null;
+  state: T;
+  joined_at: string;
+  updated_at: string;
+};
+
+export type QuickRealtimeChannel = {
+  ready: Promise<void>;
+  send(event: string, payload?: unknown): void;
+  on(event: string, handler: (payload: unknown, message: QuickRealtimeMessage) => void): () => void;
+  onError(handler: (error: Event | Error) => void): () => void;
+  close(): void;
+};
+
+export type QuickPresenceChannel<T extends JsonBlob = JsonBlob> = QuickRealtimeChannel & {
+  join(state?: T): void;
+  update(state: T): void;
+  leave(): void;
+  onSnapshot(handler: (members: Array<QuickPresenceMember<T>>) => void): () => void;
+  onJoin(handler: (member: QuickPresenceMember<T>) => void): () => void;
+  onUpdate(handler: (member: QuickPresenceMember<T>) => void): () => void;
+  onLeave(handler: (member: QuickPresenceMember<T>) => void): () => void;
+};
+
+export type QuickRealtime = {
+  channel(name: string): QuickRealtimeChannel;
+  presence<T extends JsonBlob = JsonBlob>(name: string): QuickPresenceChannel<T>;
+};
+
 export type QuickClient = {
   auth: QuickAuth;
   db: QuickDatabase;
   files: QuickFiles;
   identity: QuickIdentity;
+  realtime: QuickRealtime;
   sites: QuickSites;
 };
 
@@ -165,6 +211,21 @@ type CollectionRealtimeEvent<T extends JsonBlob = JsonBlob> =
 
 function parseCollectionRealtimeEvent<T extends JsonBlob>(event: MessageEvent<string>) {
   return JSON.parse(event.data) as CollectionRealtimeEvent<T>;
+}
+
+function realtimeUrl(baseUrl: string, channel: string) {
+  const path = `/realtime/ws?channel=${encodeURIComponent(channel)}`;
+
+  if (baseUrl.startsWith("http://") || baseUrl.startsWith("https://")) {
+    const url = new URL(`${baseUrl}${path}`);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return url.toString();
+  }
+
+  const origin = globalThis.location?.origin ?? "http://localhost";
+  const url = new URL(`${baseUrl}${path}`, origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
 }
 
 async function readResponseBody(response: Response) {
@@ -290,6 +351,185 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
     },
   };
 
+  const realtime: QuickRealtime = {
+    channel(name) {
+      if (!("WebSocket" in globalThis)) {
+        throw new Error("Quick realtime channels require WebSocket support");
+      }
+
+      const socket = new WebSocket(realtimeUrl(baseUrl, name));
+      const eventHandlers = new Map<string, Set<(payload: unknown, message: QuickRealtimeMessage) => void>>();
+      const errorHandlers = new Set<(error: Event | Error) => void>();
+      let readyResolve: () => void;
+      let readyReject: (error: Error) => void;
+      const ready = new Promise<void>((resolve, reject) => {
+        readyResolve = resolve;
+        readyReject = reject;
+      });
+
+      socket.addEventListener("message", (event) => {
+        try {
+          const message = JSON.parse(String(event.data)) as { type?: string; event?: string; payload?: unknown };
+
+          if (message.type === "ready") {
+            readyResolve();
+            return;
+          }
+
+          if (message.type === "event" && typeof message.event === "string") {
+            for (const handler of eventHandlers.get(message.event) ?? []) {
+              handler(message.payload, message as QuickRealtimeMessage);
+            }
+          }
+        } catch (error) {
+          for (const handler of errorHandlers) {
+            handler(error instanceof Error ? error : new Error(String(error)));
+          }
+        }
+      });
+
+      socket.addEventListener("error", (event) => {
+        readyReject(new Error("Quick realtime connection failed"));
+        for (const handler of errorHandlers) {
+          handler(event);
+        }
+      });
+
+      function send(event: string, payload?: unknown) {
+        const data = JSON.stringify({ type: "event", event, payload });
+
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(data);
+          return;
+        }
+
+        socket.addEventListener("open", () => socket.send(data), { once: true });
+      }
+
+      return {
+        ready,
+        send,
+        on(event, handler) {
+          const handlers = eventHandlers.get(event) ?? new Set<(payload: unknown, message: QuickRealtimeMessage) => void>();
+          handlers.add(handler);
+          eventHandlers.set(event, handlers);
+          return () => handlers.delete(handler);
+        },
+        onError(handler) {
+          errorHandlers.add(handler);
+          return () => errorHandlers.delete(handler);
+        },
+        close() {
+          socket.close();
+        },
+      };
+    },
+
+    presence<T extends JsonBlob = JsonBlob>(name: string): QuickPresenceChannel<T> {
+      if (!("WebSocket" in globalThis)) {
+        throw new Error("Quick realtime presence requires WebSocket support");
+      }
+
+      const snapshotHandlers = new Set<(members: Array<QuickPresenceMember<T>>) => void>();
+      const joinHandlers = new Set<(member: QuickPresenceMember<T>) => void>();
+      const updateHandlers = new Set<(member: QuickPresenceMember<T>) => void>();
+      const leaveHandlers = new Set<(member: QuickPresenceMember<T>) => void>();
+
+      const rawSocket = new WebSocket(realtimeUrl(baseUrl, name));
+      const eventHandlers = new Map<string, Set<(payload: unknown, message: QuickRealtimeMessage) => void>>();
+      const errorHandlers = new Set<(error: Event | Error) => void>();
+      let readyResolve: () => void;
+      let readyReject: (error: Error) => void;
+      const ready = new Promise<void>((resolve, reject) => {
+        readyResolve = resolve;
+        readyReject = reject;
+      });
+
+      rawSocket.addEventListener("message", (event) => {
+        try {
+          const message = JSON.parse(String(event.data)) as { type?: string; event?: string; payload?: unknown; members?: Array<QuickPresenceMember<T>>; member?: QuickPresenceMember<T> };
+
+          if (message.type === "ready") {
+            readyResolve();
+          } else if (message.type === "event" && typeof message.event === "string") {
+            for (const handler of eventHandlers.get(message.event) ?? []) handler(message.payload, message as QuickRealtimeMessage);
+          } else if (message.type === "presence:snapshot") {
+            for (const handler of snapshotHandlers) handler(message.members ?? []);
+          } else if (message.type === "presence:join" && message.member) {
+            for (const handler of joinHandlers) handler(message.member);
+          } else if (message.type === "presence:update" && message.member) {
+            for (const handler of updateHandlers) handler(message.member);
+          } else if (message.type === "presence:leave" && message.member) {
+            for (const handler of leaveHandlers) handler(message.member);
+          }
+        } catch (error) {
+          for (const handler of errorHandlers) handler(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+
+      rawSocket.addEventListener("error", (event) => {
+        readyReject(new Error("Quick realtime connection failed"));
+        for (const handler of errorHandlers) handler(event);
+      });
+
+      function sendRaw(message: unknown) {
+        const data = JSON.stringify(message);
+
+        if (rawSocket.readyState === WebSocket.OPEN) {
+          rawSocket.send(data);
+          return;
+        }
+
+        rawSocket.addEventListener("open", () => rawSocket.send(data), { once: true });
+      }
+
+      return {
+        ready,
+        send(event, payload) {
+          sendRaw({ type: "event", event, payload });
+        },
+        on(event, handler) {
+          const handlers = eventHandlers.get(event) ?? new Set<(payload: unknown, message: QuickRealtimeMessage) => void>();
+          handlers.add(handler);
+          eventHandlers.set(event, handlers);
+          return () => handlers.delete(handler);
+        },
+        onError(handler) {
+          errorHandlers.add(handler);
+          return () => errorHandlers.delete(handler);
+        },
+        close() {
+          rawSocket.close();
+        },
+        join(state = {} as T) {
+          sendRaw({ type: "presence:join", state });
+        },
+        update(state) {
+          sendRaw({ type: "presence:update", state });
+        },
+        leave() {
+          sendRaw({ type: "presence:leave" });
+        },
+        onSnapshot(handler) {
+          snapshotHandlers.add(handler);
+          return () => snapshotHandlers.delete(handler);
+        },
+        onJoin(handler) {
+          joinHandlers.add(handler);
+          return () => joinHandlers.delete(handler);
+        },
+        onUpdate(handler) {
+          updateHandlers.add(handler);
+          return () => updateHandlers.delete(handler);
+        },
+        onLeave(handler) {
+          leaveHandlers.add(handler);
+          return () => leaveHandlers.delete(handler);
+        },
+      };
+    },
+  };
+
   const db: QuickDatabase = {
     collection<T extends JsonBlob = JsonBlob>(name: string): QuickCollection<T> {
       const encodedName = encodeURIComponent(name);
@@ -364,5 +604,5 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
     },
   };
 
-  return { auth, db, files, identity, sites };
+  return { auth, db, files, identity, realtime, sites };
 }
