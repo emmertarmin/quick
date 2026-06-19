@@ -2,6 +2,7 @@ import { authCommand } from "../commands/auth.js";
 import { configCommand } from "../commands/config.js";
 import { deployCommand } from "../commands/deploy.js";
 import { helpCommand } from "../commands/help.js";
+import { statsCommand } from "../commands/stats.js";
 import { versionCommand } from "../commands/version.js";
 import type { CommandDefinition, FlagDefinition } from "./types.js";
 
@@ -24,7 +25,7 @@ export const rootCommand: CommandDefinition = {
   name: "quick",
   summary: "Quick CLI",
   description: "Deploy and manage Quick static sites.",
-  subcommands: [authCommand, configCommand, deployCommand, helpCommand, versionCommand],
+  subcommands: [authCommand, configCommand, deployCommand, statsCommand, helpCommand, versionCommand],
 };
 
 export function getVisibleSubcommands(command: CommandDefinition): CommandDefinition[] {

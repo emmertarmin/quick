@@ -7,6 +7,7 @@ import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
 import { registerSdkRoutes } from "./routes/sdk";
 import { registerSiteRoutes } from "./routes/sites";
+import { registerSiteStatsRoutes } from "./routes/site-stats";
 import { registerRealtimeRoutes } from "./routes/realtime";
 import { port, publicApiBase } from "./config";
 
@@ -39,6 +40,7 @@ app.route("/", authRoutes);
 registerSdkRoutes(app);
 registerCollectionRoutes(app);
 registerFileRoutes(app);
+registerSiteStatsRoutes(app);
 registerSiteRoutes(app);
 registerRealtimeRoutes(app);
 
