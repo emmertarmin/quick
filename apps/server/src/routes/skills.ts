@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
-const quickSkillPath = join(import.meta.dir, "skills", "quick", "SKILL.md");
+const quickSkillPath = join(import.meta.dir, "..", "skills", "quick", "SKILL.md");
 
 function publicOrigin(request: Request) {
   const url = new URL(request.url);

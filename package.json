@@ -19,7 +19,9 @@
     "db:push": "bun run --cwd packages/db db:push",
     "db:studio": "bun run --cwd packages/db db:studio",
     "test:e2e": "docker compose up -d --force-recreate server nginx && playwright test",
-    "test:e2e:install": "playwright install chromium"
+    "test:e2e:install": "playwright install chromium",
+    "publish:cli": "npm publish --workspace @emmertarmin/quick",
+    "publish:cli:dry-run": "npm publish --workspace @emmertarmin/quick --dry-run"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",

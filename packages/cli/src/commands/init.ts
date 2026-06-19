@@ -36,14 +36,6 @@ function apiUrl(remote: string, path: string) {
   return url.toString();
 }
 
-function skillUrl(remote: string) {
-  const url = new URL(remote);
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/skills/quick/SKILL.md`.replace(/\/+/g, "/");
-  url.search = "";
-  url.hash = "";
-  return url.toString();
-}
-
 async function prompt(message: string) {
   process.stdout.write(message);
   for await (const chunk of process.stdin) {
@@ -103,7 +95,7 @@ async function checkSiteCollision(remote: string, project: string, auth: StoredA
 }
 
 async function fetchSkill(remote: string, auth: StoredAuth) {
-  const response = await fetch(skillUrl(remote), {
+  const response = await fetch(apiUrl(remote, "/skills/quick/SKILL.md"), {
     headers: {
       Authorization: `Bearer ${auth.accessToken}`,
       "X-Quick-Refresh-Token": auth.refreshToken,
