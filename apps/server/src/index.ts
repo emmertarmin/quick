@@ -6,6 +6,7 @@ import { authRoutes } from "./routes/auth";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
 import { registerSdkRoutes } from "./routes/sdk";
+import { registerSkillRoutes } from "./routes/skills";
 import { registerSiteRoutes } from "./routes/sites";
 import { registerSiteStatsRoutes } from "./routes/site-stats";
 import { registerRealtimeRoutes } from "./routes/realtime";
@@ -38,6 +39,7 @@ app.openapi(
 );
 app.route("/", authRoutes);
 registerSdkRoutes(app);
+registerSkillRoutes(app);
 registerCollectionRoutes(app);
 registerFileRoutes(app);
 registerSiteStatsRoutes(app);

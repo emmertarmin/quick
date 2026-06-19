@@ -37,7 +37,7 @@ afterEach(async () => {
 });
 
 test("help is available at every config command depth", async () => {
-  for (const args of [["-h"], ["auth", "-h"], ["auth", "login", "-h"], ["auth", "status", "-h"], ["auth", "logout", "-h"], ["config", "-h"], ["config", "get", "-h"], ["config", "set", "-h"], ["config", "path", "-h"], ["deploy", "-h"]]) {
+  for (const args of [["-h"], ["auth", "-h"], ["auth", "login", "-h"], ["auth", "status", "-h"], ["auth", "logout", "-h"], ["config", "-h"], ["config", "get", "-h"], ["config", "set", "-h"], ["config", "path", "-h"], ["deploy", "-h"], ["purge", "-h"]]) {
     const result = await runCli(args);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage:");

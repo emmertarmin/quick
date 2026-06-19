@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/pr
 import { basename, join, resolve, sep } from "node:path";
 import type { Context } from "hono";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { sites } from "@quick/db";
+import { sqlite, sites } from "@quick/db";
 import type { QuickSite } from "@quick/shared";
-import { quickDomain, quickScheme, sitesRoot } from "../config";
+import { filesRoot, quickDomain, quickScheme, sitesRoot } from "../config";
 import { readAuthSession } from "./auth";
 
 const siteNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -142,14 +142,73 @@ async function countFilesAndRejectSymlinks(dir: string): Promise<number> {
   return count;
 }
 
-async function assertInsideSitesRoot(path: string) {
-  const root = resolve(sitesRoot);
+async function assertInsideRoot(rootPath: string, path: string, label: string) {
+  const root = resolve(rootPath);
   const target = resolve(path);
   const rootWithSeparator = root.endsWith(sep) ? root : `${root}${sep}`;
 
   if (target !== root && !target.startsWith(rootWithSeparator)) {
-    throw new Error(`Resolved site path escaped sites root: ${basename(path)}`);
+    throw new Error(`Resolved ${label} path escaped root: ${basename(path)}`);
   }
+}
+
+async function assertInsideSitesRoot(path: string) {
+  await assertInsideRoot(sitesRoot, path, "site");
+}
+
+async function assertInsideFilesRoot(path: string) {
+  await assertInsideRoot(filesRoot, path, "files");
+}
+
+type PurgeDatabaseCounts = {
+  siteMetadataRows: number;
+  documentRows: number;
+};
+
+type PurgeResult = {
+  site: string;
+  sourceDeleted: boolean;
+  filesDeleted: boolean;
+  database: PurgeDatabaseCounts;
+};
+
+function databaseCounts(site: string): PurgeDatabaseCounts {
+  const documentRows = sqlite.prepare("select count(*) as count from json_documents where site = ?").get(site) as { count: number };
+  const siteMetadataRows = sqlite.prepare("select count(*) as count from sites where name = ?").get(site) as { count: number };
+
+  return {
+    siteMetadataRows: Number(siteMetadataRows.count),
+    documentRows: Number(documentRows.count),
+  };
+}
+
+async function purgeSite(site: string): Promise<PurgeResult> {
+  const sourcePath = sitePath(site);
+  const fileUploadsPath = join(filesRoot, site);
+
+  await assertInsideSitesRoot(sourcePath);
+  await assertInsideFilesRoot(fileUploadsPath);
+
+  const [sourceStats, fileUploadStats] = await Promise.all([
+    stat(sourcePath).catch(() => undefined),
+    stat(fileUploadsPath).catch(() => undefined),
+  ]);
+  const database = databaseCounts(site);
+
+  await rm(sourcePath, { recursive: true, force: true });
+  await rm(fileUploadsPath, { recursive: true, force: true });
+
+  sqlite.transaction((purgedSite: string) => {
+    sqlite.prepare("delete from json_documents where site = ?").run(purgedSite);
+    sqlite.prepare("delete from sites where name = ?").run(purgedSite);
+  })(site);
+
+  return {
+    site,
+    sourceDeleted: Boolean(sourceStats),
+    filesDeleted: Boolean(fileUploadStats),
+    database,
+  };
 }
 
 async function publishDeploy(site: string, tarball: ArrayBuffer) {
@@ -218,6 +277,33 @@ export function registerSiteRoutes(app: OpenAPIHono) {
     }
 
     return c.json({ ...metadata, site, exists: true, url: siteUrl(site), hasIndex }, 200);
+  });
+
+  app.delete("/sites/:site", async (c) => {
+    const site = c.req.param("site");
+
+    if (!validateSiteName(site)) {
+      return c.json(deployError("Invalid site name"), 400);
+    }
+
+    const session = await requireDeployIdentity(c);
+    if (!session) {
+      return c.json(deployError("Authentication required"), 401);
+    }
+
+    try {
+      const result = await purgeSite(site);
+      const existed = result.sourceDeleted || result.filesDeleted || result.database.siteMetadataRows > 0 || result.database.documentRows > 0;
+
+      if (!existed) {
+        return c.json({ error: "Site does not exist", site }, 404);
+      }
+
+      return c.json(result, 200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json(deployError(message), 500);
+    }
   });
 
   app.put("/sites/:site/deploy", async (c) => {

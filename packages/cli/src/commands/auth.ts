@@ -101,6 +101,17 @@ export async function loadAuthForRemote(remote: string) {
   return auth;
 }
 
+export async function verifyAuthForRemote(remote: string, auth: StoredAuth) {
+  const session = await fetchSession(remote, auth);
+  if (!session.response.ok || !session.body?.authenticated) {
+    return { authenticated: false as const, auth };
+  }
+
+  const nextAuth = { ...auth, ...session.tokens, user: session.body.user };
+  await saveAuth(nextAuth);
+  return { authenticated: true as const, auth: nextAuth, user: session.body.user };
+}
+
 export async function refreshAuthFromResponse(remote: string, auth: StoredAuth, response: Response) {
   const accessToken = response.headers.get("X-Quick-Access-Token");
   const refreshToken = response.headers.get("X-Quick-Refresh-Token");

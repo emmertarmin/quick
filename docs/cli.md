@@ -163,6 +163,26 @@ If the target site already exists, the server may return a conflict. In an inter
 
 On success, the CLI prints the deployed site name, file count, and URL.
 
+### `quick purge`
+
+Permanently delete a site from a Quick server.
+
+```sh
+quick purge [options] <site>
+```
+
+Purging removes the deployed `sites/<site>` source folder, uploaded blobs under `files/<site>`, database documents, and deploy metadata. The CLI warns that this cannot be undone and requires you to type the exact site name in an interactive terminal before it sends the request.
+
+Options:
+
+- `--remote <url>` — override the resolved Quick server URL.
+
+Example:
+
+```sh
+quick purge todo
+```
+
 ### `quick help`
 
 Show top-level help or help for a command path.

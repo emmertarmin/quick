@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "description": "Command line tools for self-hosted Quick sites.",
   "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "Armin Emmert",
+    "email": "emmertarmin@gmail.com"
+  },
+  "homepage": "https://github.com/emmertarmin/quick",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emmertarmin/quick.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/emmertarmin/quick/issues"
+  },
   "bin": {
     "quick": "dist/index.js"
   },
