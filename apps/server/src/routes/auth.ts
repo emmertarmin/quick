@@ -4,6 +4,7 @@ import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { issuer } from "@openauthjs/openauth";
 import { createClient } from "@openauthjs/openauth/client";
 import { CodeProvider, type CodeProviderError, type CodeProviderState } from "@openauthjs/openauth/provider/code";
+import { MicrosoftProvider } from "@openauthjs/openauth/provider/microsoft";
 import { createSubjects } from "@openauthjs/openauth/subject";
 import { openAuthSqliteStorage } from "@quick/db";
 import type { QuickUser } from "@quick/shared";
@@ -14,7 +15,7 @@ import {
   quickSessionResponseSchema,
 } from "../schemas";
 import * as v from "valibot";
-import { port, quickDomain } from "../config";
+import { codeAuthEnabled, entraConfig, port, quickDomain } from "../config";
 
 const AUTH_ACCESS_COOKIE = "quick_access_token";
 const AUTH_REFRESH_COOKIE = "quick_refresh_token";
@@ -174,7 +175,8 @@ export async function readAuthSession(c: Context): Promise<AuthSession | undefin
 
 async function openAuthAuthorizeUrl(c: Context, returnTo: string) {
   const callbackUrl = `${publicPlatformOrigin(c)}/api/auth/callback`;
-  const { url } = await openAuthClient(c).authorize(callbackUrl, "code", { provider: "code" });
+  const authorizeOptions = entraConfig || !codeAuthEnabled ? undefined : { provider: "code" };
+  const { url } = await openAuthClient(c).authorize(callbackUrl, "code", authorizeOptions);
   setCookie(c, AUTH_RETURN_TO_COOKIE, returnTo, authCookieOptions(c, 60 * 10));
   return url;
 }
@@ -200,25 +202,92 @@ function codeProviderPage(state: CodeProviderState, form?: FormData, error?: Cod
   });
 }
 
+const codeProvider = CodeProvider<{ email: string }>({
+  length: 6,
+  request: async (_request, state, form, error) => codeProviderPage(state, form, error),
+  sendCode: async (claims, code) => {
+    if (!claims.email?.includes("@")) {
+      return { type: "invalid_claim", key: "email", value: claims.email ?? "" };
+    }
+
+    console.log(`[auth] development login code for ${claims.email}: ${code}`);
+  },
+});
+
+const openAuthProviders: {
+  code?: typeof codeProvider;
+  microsoft?: ReturnType<typeof MicrosoftProvider>;
+} = {};
+
+if (codeAuthEnabled) {
+  openAuthProviders.code = codeProvider;
+}
+
+if (entraConfig) {
+  openAuthProviders.microsoft = MicrosoftProvider({
+    tenant: entraConfig.tenant,
+    clientID: entraConfig.clientID,
+    clientSecret: entraConfig.clientSecret,
+    scopes: ["openid", "profile", "email", "User.Read"],
+  });
+}
+
+async function microsoftUser(accessToken: string) {
+  const response = await fetch("https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Microsoft Graph /me failed: ${response.status} ${await response.text()}`);
+  }
+
+  const profile = await response.json() as {
+    id?: string;
+    displayName?: string;
+    mail?: string;
+    userPrincipalName?: string;
+  };
+  const microsoftID = profile.id;
+  const email = profile.mail || profile.userPrincipalName;
+
+  if (!microsoftID && !email) {
+    throw new Error("Microsoft Graph /me did not return an id or email");
+  }
+
+  return {
+    id: email ?? microsoftID!,
+    email,
+    name: profile.displayName ?? email ?? microsoftID,
+    subject: `microsoft:${microsoftID ?? email}`,
+  };
+}
+
 const openAuthIssuer = issuer({
   allow: async () => true,
-  providers: {
-    code: CodeProvider<{ email: string }>({
-      length: 6,
-      request: async (_request, state, form, error) => codeProviderPage(state, form, error),
-      sendCode: async (claims, code) => {
-        if (!claims.email?.includes("@")) {
-          return { type: "invalid_claim", key: "email", value: claims.email ?? "" };
-        }
-
-        console.log(`[auth] development login code for ${claims.email}: ${code}`);
-      },
-    }),
-  },
+  providers: openAuthProviders,
   storage: openAuthSqliteStorage(),
   subjects: openAuthSubjects,
   success: async (ctx, value) => {
-    const email = value.claims.email;
+    if (!value) {
+      throw new Error("Missing OpenAuth success value");
+    }
+
+    if (value.provider === "microsoft") {
+      const microsoftValue = value as typeof value & { tokenset: { access: string } };
+      const user = await microsoftUser(microsoftValue.tokenset.access);
+      return ctx.subject(
+        "user",
+        {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        },
+        { subject: user.subject },
+      );
+    }
+
+    const codeValue = value as typeof value & { claims: { email: string } };
+    const email = codeValue.claims.email;
     return ctx.subject(
       "user",
       {

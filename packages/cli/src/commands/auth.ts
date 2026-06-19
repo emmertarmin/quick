@@ -139,7 +139,7 @@ const loginCommand: CommandDefinition = {
     const remote = await resolveRemote({ remoteFlag: values.remote });
     const client = createClient({ clientID: "quick-cli", issuer: remote });
     const callback = await waitForAuthorizationCode();
-    const { url } = await client.authorize(callback.callbackUrl, "code", { provider: "code" });
+    const { url } = await client.authorize(callback.callbackUrl, "code");
 
     console.log(`Opening browser for Quick login: ${url}`);
     if (!openBrowser(url)) {

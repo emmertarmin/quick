@@ -89,6 +89,15 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
   }
 
+  location /microsoft/ {
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/microsoft/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Quick-Site "";
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
   location @platform_static {
     try_files $uri/index.html $uri /index.html =404;
   }
@@ -201,6 +210,15 @@ server {
 
   location /code/ {
     proxy_pass http://${QUICK_SERVER_UPSTREAM}/code/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Quick-Site $quick_site;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  location /microsoft/ {
+    proxy_pass http://${QUICK_SERVER_UPSTREAM}/microsoft/;
     proxy_set_header Host $host;
     proxy_set_header X-Quick-Site $quick_site;
     proxy_set_header X-Forwarded-Host $host;
