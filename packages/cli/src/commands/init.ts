@@ -8,8 +8,8 @@ import { loadAuthForRemote, refreshAuthFromResponse, verifyAuthForRemote } from 
 
 const siteNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
-type QuickProjectConfig = {
-  project: string;
+type QuickSiteConfig = {
+  site: string;
 };
 
 type SiteLookupResponse = {
@@ -18,13 +18,13 @@ type SiteLookupResponse = {
   lastDeployedBy?: { id: string; email?: string; name?: string };
 };
 
-function normalizeProjectName(value: string) {
+function normalizeSiteName(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
 }
 
-function validateProjectName(project: string) {
-  if (!siteNamePattern.test(project)) {
-    throw new Error("Invalid project name. Use lowercase letters, numbers, and hyphens; start and end with a letter or number.");
+function validateSiteName(site: string) {
+  if (!siteNamePattern.test(site)) {
+    throw new Error("Invalid site name. Use lowercase letters, numbers, and hyphens; start and end with a letter or number.");
   }
 }
 
@@ -44,7 +44,7 @@ async function prompt(message: string) {
   return "";
 }
 
-async function readProjectConfig(path: string) {
+async function readSiteConfig(path: string) {
   const text = await readFile(path, "utf8").catch((error) => {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
@@ -52,32 +52,32 @@ async function readProjectConfig(path: string) {
 
   if (text === undefined) return undefined;
 
-  const parsed = JSON.parse(text) as Partial<QuickProjectConfig>;
-  if (typeof parsed.project !== "string" || parsed.project.length === 0) {
-    throw new Error(`${path} must define a non-empty "project" string.`);
+  const parsed = JSON.parse(text) as Partial<QuickSiteConfig>;
+  if (typeof parsed.site !== "string" || parsed.site.length === 0) {
+    throw new Error(`${path} must define a non-empty "site" string.`);
   }
 
-  return { project: parsed.project };
+  return { site: parsed.site };
 }
 
-async function chooseProjectName(configPath: string, cwd: string) {
-  const existing = await readProjectConfig(configPath);
+async function chooseSiteName(configPath: string, cwd: string) {
+  const existing = await readSiteConfig(configPath);
   if (existing) {
-    validateProjectName(existing.project);
-    return { project: existing.project, created: false };
+    validateSiteName(existing.site);
+    return { site: existing.site, created: false };
   }
 
-  const defaultName = normalizeProjectName(basename(cwd)) || "quick-project";
-  const answer = await prompt(`Project name [${defaultName}]: `);
-  const project = normalizeProjectName(answer || defaultName);
-  validateProjectName(project);
+  const defaultName = normalizeSiteName(basename(cwd)) || "quick-site";
+  const answer = await prompt(`Site name [${defaultName}]: `);
+  const site = normalizeSiteName(answer || defaultName);
+  validateSiteName(site);
 
-  await writeFile(configPath, `${JSON.stringify({ project }, null, 2)}\n`, "utf8");
-  return { project, created: true };
+  await writeFile(configPath, `${JSON.stringify({ site }, null, 2)}\n`, "utf8");
+  return { site, created: true };
 }
 
-async function checkSiteCollision(remote: string, project: string, auth: StoredAuth) {
-  const response = await fetch(apiUrl(remote, `/sites/${encodeURIComponent(project)}`), {
+async function checkSiteCollision(remote: string, site: string, auth: StoredAuth) {
+  const response = await fetch(apiUrl(remote, `/sites/${encodeURIComponent(site)}`), {
     headers: {
       Authorization: `Bearer ${auth.accessToken}`,
       "X-Quick-Refresh-Token": auth.refreshToken,
@@ -87,7 +87,7 @@ async function checkSiteCollision(remote: string, project: string, auth: StoredA
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`Could not check project name collision: ${text || `${response.status} ${response.statusText}`}`);
+    throw new Error(`Could not check site name collision: ${text || `${response.status} ${response.statusText}`}`);
   }
 
   const body = (await response.json()) as SiteLookupResponse;
@@ -113,12 +113,21 @@ async function fetchSkill(remote: string, auth: StoredAuth) {
 
 export const initCommand: CommandDefinition = {
   name: "init",
-  summary: "Initialize a Quick project",
-  description: "Check auth/config, write .quick.json, verify the project name, and install the Quick agent skillfile.",
-  examples: ["quick init"],
+  summary: "Initialize a Quick site",
+  description: "Check auth/config, write .quick.json, verify the site name, and install the Quick agent skillfile.",
+  arguments: [
+    {
+      name: "path",
+      description: "Directory to initialize. Defaults to the current working directory.",
+      required: false,
+    },
+  ],
+  examples: ["quick init", "quick init ./site"],
   execute: async ({ positionals }) => {
-    if (positionals.length > 0) {
-      throw new Error("Too many arguments. Usage: quick init");
+    const [path, extra] = positionals;
+
+    if (extra !== undefined) {
+      throw new Error("Too many arguments. Usage: quick init [path]");
     }
 
     const config = await loadConfig();
@@ -139,36 +148,37 @@ export const initCommand: CommandDefinition = {
     let currentAuth: StoredAuth = session.auth;
     console.log(`Logged in to ${remote} as ${session.user.email ?? session.user.id}`);
 
-    const cwd = resolve(process.cwd());
-    const projectConfigPath = join(cwd, ".quick.json");
-    const chosen = await chooseProjectName(projectConfigPath, cwd);
-    console.log(`${chosen.created ? "Created" : "Found"} .quick.json with project '${chosen.project}'.`);
+    const targetDirectory = resolve(path ?? process.cwd());
+    await mkdir(targetDirectory, { recursive: true });
+    const siteConfigPath = join(targetDirectory, ".quick.json");
+    const chosen = await chooseSiteName(siteConfigPath, targetDirectory);
+    console.log(`${chosen.created ? "Created" : "Found"} .quick.json with site '${chosen.site}'.`);
 
-    const collision = await checkSiteCollision(remote, chosen.project, currentAuth);
+    const collision = await checkSiteCollision(remote, chosen.site, currentAuth);
     currentAuth = collision.auth;
     if (collision.exists) {
       const deployer = collision.body.lastDeployedBy?.email ?? collision.body.lastDeployedBy?.id;
       const suffix = deployer ? ` Last deployed by ${deployer}.` : "";
-      console.log(`Project/site '${chosen.project}' already exists.${suffix}`);
-      const confirmed = await prompt(`Type '${chosen.project}' to keep this project name, or enter a different name: `);
-      const nextProject = normalizeProjectName(confirmed);
-      if (nextProject !== chosen.project) {
-        validateProjectName(nextProject);
-        const nextCollision = await checkSiteCollision(remote, nextProject, currentAuth);
+      console.log(`Site '${chosen.site}' already exists.${suffix}`);
+      const confirmed = await prompt(`Type '${chosen.site}' to keep this site name, or enter a different name: `);
+      const nextSite = normalizeSiteName(confirmed);
+      if (nextSite !== chosen.site) {
+        validateSiteName(nextSite);
+        const nextCollision = await checkSiteCollision(remote, nextSite, currentAuth);
         currentAuth = nextCollision.auth;
         if (nextCollision.exists) {
-          throw new Error(`Project/site '${nextProject}' also exists. Re-run \`quick init\` and choose another name, or confirm it explicitly.`);
+          throw new Error(`Site '${nextSite}' also exists. Re-run \`quick init\` and choose another name, or confirm it explicitly.`);
         }
-        await writeFile(projectConfigPath, `${JSON.stringify({ project: nextProject }, null, 2)}\n`, "utf8");
-        console.log(`Updated .quick.json with project '${nextProject}'.`);
+        await writeFile(siteConfigPath, `${JSON.stringify({ site: nextSite }, null, 2)}\n`, "utf8");
+        console.log(`Updated .quick.json with site '${nextSite}'.`);
       } else {
-        console.log(`Confirmed existing project/site '${chosen.project}'.`);
+        console.log(`Confirmed existing site '${chosen.site}'.`);
       }
     }
 
     const skill = await fetchSkill(remote, currentAuth);
-    const skillPath = join(cwd, ".agents", "skills", "quick", "SKILL.md");
-    await mkdir(join(cwd, ".agents", "skills", "quick"), { recursive: true });
+    const skillPath = join(targetDirectory, ".agents", "skills", "quick", "SKILL.md");
+    await mkdir(join(targetDirectory, ".agents", "skills", "quick"), { recursive: true });
     await writeFile(skillPath, skill.text, "utf8");
     console.log(`Installed Quick skillfile: ${skillPath}`);
   },

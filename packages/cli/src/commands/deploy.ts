@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { CommandDefinition } from "../cli/types.js";
@@ -32,6 +32,27 @@ async function resolveDeployDirectory(path: string) {
   }
 
   return absolutePath;
+}
+
+type QuickSiteConfig = {
+  site: string;
+};
+
+async function readDeploySiteConfig(directory: string) {
+  const path = join(directory, ".quick.json");
+  const text = await readFile(path, "utf8").catch((error) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  });
+
+  if (text === undefined) return undefined;
+
+  const parsed = JSON.parse(text) as Partial<QuickSiteConfig>;
+  if (typeof parsed.site !== "string" || parsed.site.length === 0) {
+    throw new Error(`${path} must define a non-empty "site" string.`);
+  }
+
+  return parsed.site;
 }
 
 function deployApiUrl(remote: string, site: string) {
@@ -154,24 +175,35 @@ export const deployCommand: CommandDefinition = {
     },
     {
       name: "site",
-      description: "Site name to deploy to",
-      required: true,
+      description: "Site name to deploy to. Defaults to .quick.json in the deploy directory.",
+      required: false,
     },
   ],
-  examples: ["quick deploy . fun", "quick deploy ./site fun --remote https://quick.example.com"],
+  examples: ["quick deploy .", "quick deploy . fun", "quick deploy ./site fun --remote https://quick.example.com"],
   execute: async ({ values, positionals }) => {
-    const [dir, site, extra] = positionals;
+    const [dir, siteArg, extra] = positionals;
 
-    if (dir === undefined || site === undefined) {
-      throw new Error("Missing arguments. Usage: quick deploy <dir> <site>");
+    if (dir === undefined) {
+      throw new Error("Missing arguments. Usage: quick deploy <dir> [site]");
     }
 
     if (extra !== undefined) {
-      throw new Error("Too many arguments. Usage: quick deploy <dir> <site>");
+      throw new Error("Too many arguments. Usage: quick deploy <dir> [site]");
     }
 
-    validateSiteName(site);
+    if (siteArg !== undefined) {
+      validateSiteName(siteArg);
+    }
+
     const directory = await resolveDeployDirectory(dir);
+    const site = siteArg ?? await readDeploySiteConfig(directory);
+    if (site === undefined) {
+      throw new Error(`Missing site. Pass one explicitly or define "site" in ${join(directory, ".quick.json")}.`);
+    }
+
+    if (siteArg === undefined) {
+      validateSiteName(site);
+    }
     const remote = await resolveRemote({ remoteFlag: values.remote });
 
     console.log(`Remote: ${remote}`);

@@ -1,6 +1,6 @@
 ---
 name: quick
-description: Build, initialize, and deploy Quick static browser apps using the Quick SDK and CLI. Use when working in a Quick project, creating internal static apps, using quick.db, quick.files, quick.realtime, quick.identity, or deploying with quick deploy.
+description: Build, initialize, and deploy Quick static browser apps using the Quick SDK and CLI. Use when working in a Quick site, creating internal static apps, using quick.db, quick.files, quick.realtime, quick.identity, or deploying with quick deploy.
 ---
 
 # Quick
@@ -13,10 +13,10 @@ Build browser-only apps. No custom backend, server process, cron, migrations, se
 
 - Start simple: `index.html`, `app.js`, `style.css`.
 - Deploy root must contain `index.html`.
-- Project metadata in `.quick.json`:
+- Site metadata in `.quick.json`:
 
 ```json
-{ "project": "my-project" }
+{ "site": "my-site" }
 ```
 
 - Use `quick init` to create/update `.quick.json` and install/update this skill.
@@ -44,10 +44,10 @@ Use DB for durable state. Use `collection.subscribe(...)` for DB-driven UI updat
 - `quick config set remote {{ QUICK_ORIGIN }}`
 - `quick auth login`
 - `quick auth status`
-- `quick init`
-- `quick deploy . <project>`
+- `quick init` or `quick init <path>`
+- `quick deploy .` (uses `.quick.json`) or `quick deploy . <site>`
 
-Deploy overwrite may require typing the project/site name.
+Deploy overwrite may require typing the site name.
 
 ## Examples / docs
 

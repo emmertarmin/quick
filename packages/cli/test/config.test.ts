@@ -97,6 +97,52 @@ test("quick deploy validates inputs and resolves remote from config", async () =
   }
 });
 
+test("quick deploy uses site from .quick.json when site argument is omitted", async () => {
+  await runCli(["config", "set", "remote", "https://quick.example.com"]);
+  const siteDir = await mkdtemp(join(tmpdir(), "quick-cli-site-"));
+  await writeFile(join(siteDir, "index.html"), "<!doctype html><title>Test</title>");
+  await writeFile(join(siteDir, ".quick.json"), `${JSON.stringify({ site: "from-config" }, null, 2)}\n`);
+
+  try {
+    const result = await runCli(["deploy", siteDir, "--dry-run"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Site: from-config");
+    expect(result.stdout).toContain("Dry run complete. Upload skipped.");
+  } finally {
+    await rm(siteDir, { recursive: true, force: true });
+  }
+});
+
+test("quick deploy requires site argument when .quick.json is missing", async () => {
+  const siteDir = await mkdtemp(join(tmpdir(), "quick-cli-site-"));
+  await writeFile(join(siteDir, "index.html"), "<!doctype html><title>Test</title>");
+
+  try {
+    const result = await runCli(["deploy", siteDir, "--dry-run"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Missing site");
+  } finally {
+    await rm(siteDir, { recursive: true, force: true });
+  }
+});
+
+test("quick deploy rejects .quick.json without site key", async () => {
+  const siteDir = await mkdtemp(join(tmpdir(), "quick-cli-site-"));
+  await writeFile(join(siteDir, "index.html"), "<!doctype html><title>Test</title>");
+  await writeFile(join(siteDir, ".quick.json"), `${JSON.stringify({ project: "old-key" }, null, 2)}\n`);
+
+  try {
+    const result = await runCli(["deploy", siteDir, "--dry-run"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('must define a non-empty "site" string');
+  } finally {
+    await rm(siteDir, { recursive: true, force: true });
+  }
+});
+
 test("quick deploy resolves remote from QUICK_DOMAIN", async () => {
   const siteDir = await mkdtemp(join(tmpdir(), "quick-cli-site-"));
   await writeFile(join(siteDir, "index.html"), "<!doctype html><title>Test</title>");

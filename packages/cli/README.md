@@ -14,7 +14,7 @@ bun add -g @emmertarmin/quick
 quick --help
 quick config set remote https://quick.example.com
 quick init
-quick deploy . my-site
+quick deploy .
 ```
 
 ## Requirements

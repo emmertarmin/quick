@@ -127,18 +127,39 @@ Print the config file path.
 quick config path
 ```
 
+### `quick init`
+
+Initialize a Quick site directory.
+
+```sh
+quick init [path]
+```
+
+Arguments:
+
+- `[path]` — directory to initialize. Defaults to the current working directory.
+
+`quick init` writes `.quick.json`, verifies the site name, and installs the Quick agent skillfile under `.agents/skills/quick/SKILL.md`.
+
+Examples:
+
+```sh
+quick init
+quick init ./site
+```
+
 ### `quick deploy`
 
 Package a static site directory and upload it to a Quick server.
 
 ```sh
-quick deploy [options] <dir> <site>
+quick deploy [options] <dir> [site]
 ```
 
 Arguments:
 
 - `<dir>` — directory containing static site files. It must exist and contain `index.html`.
-- `<site>` — site name. Use lowercase letters, numbers, and hyphens; it must start and end with a letter or number and can be up to 63 characters.
+- `[site]` — site name. Use lowercase letters, numbers, and hyphens; it must start and end with a letter or number and can be up to 63 characters. If omitted, Quick reads `site` from `<dir>/.quick.json`.
 
 Options:
 
@@ -148,6 +169,7 @@ Options:
 Examples:
 
 ```sh
+quick deploy .
 quick deploy . fun
 quick deploy ./site fun --remote https://quick.example.com
 quick deploy ./site fun --dry-run

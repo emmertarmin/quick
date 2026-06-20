@@ -10,7 +10,7 @@ mkdir poll
 cd poll
 quick init
 pi -p "Create a poll where we can vote when in July to hold our summerfest"
-quick deploy . summerfest
+quick deploy .
 ```
 
 That is the shape of the dream: start with an empty folder, ask an agent for a small internal app, and ship it before the meeting moves on.

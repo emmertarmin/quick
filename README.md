@@ -14,7 +14,7 @@ mkdir poll
 cd poll
 quick init
 pi -p "Create a poll where we can vote when in July to hold our summerfest"
-quick deploy . summerfest
+quick deploy .
 ```
 
 That is the point: ask for the tool, deploy the tool, use the tool.
