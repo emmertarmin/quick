@@ -4,7 +4,7 @@ services:
     environment:
       QUICK_DOMAIN: ${QUICK_DOMAIN:?QUICK_DOMAIN must be set}
       QUICK_SERVER_UPSTREAM: ${QUICK_SERVER_UPSTREAM:-server:3000}
-      QUICK_WEB_DEV_UPSTREAM: ${QUICK_WEB_DEV_UPSTREAM:-host.docker.internal:4321}
+      QUICK_WEB_DEV_UPSTREAM: ${QUICK_WEB_DEV_UPSTREAM:-http://host.docker.internal:4321}
     ports:
       - "127.0.0.1:${QUICK_HTTP_PORT:-80}:80"
       - "127.0.0.1:${QUICK_HTTPS_PORT:-443}:443"
@@ -12,8 +12,6 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./infra/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ./apps/web/dist:/srv/quick/web:ro
-      - ./runtime/sites:/srv/quick/sites:ro
       - ./runtime/certs/nginx:/etc/nginx/certs:ro
     depends_on:
       - server
@@ -29,6 +27,7 @@ services:
       DATABASE_URL: /data/db/quick.sqlite
       QUICK_SITES_ROOT: /data/sites
       QUICK_FILES_ROOT: /data/files
+      QUICK_WEB_DEV_UPSTREAM: ${QUICK_WEB_DEV_UPSTREAM:-http://host.docker.internal:4321}
     volumes:
       - .:/app
       - ./runtime/db:/data/db

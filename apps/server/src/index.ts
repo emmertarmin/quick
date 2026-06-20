@@ -11,6 +11,7 @@ import { registerSiteRoutes } from "./routes/sites";
 import { registerSiteStatsRoutes } from "./routes/site-stats";
 import { registerRealtimeRoutes } from "./routes/realtime";
 import { port, publicApiBase } from "./config";
+import { createPublicFetch } from "./public";
 
 const app = new OpenAPIHono();
 
@@ -56,13 +57,13 @@ app.doc("/doc", {
 
 app.get("/ui", swaggerUI({ url: `${publicApiBase}/doc` }));
 
-export default app;
+export { app };
 
 if (import.meta.main) {
   Bun.serve({
     port,
-    fetch: app.fetch,
-    websocket,
+    fetch: createPublicFetch(app),
+    websocket: websocket as Bun.WebSocketHandler<unknown>,
   });
 
   console.log(`Server listening internally on http://0.0.0.0:${port}`);

@@ -49,7 +49,9 @@ bun run build
 bun run dev
 ```
 
-The stack runs the server and NGINX. NGINX serves the built Astro web app from `apps/web/dist/`; if that folder has not been built yet, web pages fail instead of being generated implicitly.
+The stack runs the server and NGINX. The Bun server owns Quick routing: it derives the site from the request host, serves `/api/*`, `/quick.js`, the platform web build, and deployed site files from `runtime/sites/`. NGINX only terminates local TLS and forwards wildcard traffic to Bun.
+
+The platform homepage is served from the built Astro web app in `apps/web/dist/`; if that folder has not been built yet, web pages fail instead of being generated implicitly.
 
 For hot reloading on the real Quick origin, run Astro separately:
 
@@ -57,7 +59,9 @@ For hot reloading on the real Quick origin, run Astro separately:
 bun run dev:web
 ```
 
-When `dev:web` is running, NGINX prefers the Astro dev server at `127.0.0.1:4321`, so `https://local.example.com/` keeps the real Quick origin/cookies/SDK while Astro hot reload works. If `dev:web` is stopped, NGINX falls back to `apps/web/dist/`.
+When `dev:web` is running, the Bun server proxies platform web requests to the Astro dev server at `127.0.0.1:4321`, so `https://local.example.com/` keeps the real Quick origin/cookies/SDK while Astro hot reload works. If `dev:web` is stopped, Bun falls back to `apps/web/dist/`.
+
+The server dev script uses `bun --watch` intentionally. It fully restarts the Bun process on changes, which drops live WebSocket clients and in-memory realtime state, but avoids `bun --hot` module replacement edge cases around `Bun.serve`/WebSocket lifecycle during local Quick routing development.
 
 Or recreate after config/cert changes:
 
@@ -81,4 +85,4 @@ Expected response:
 
 The web homepage at `https://local.example.com/` is served from Astro's static output in `apps/web/dist/`. It uses the browser Quick SDK (`/quick.js`) for login/logout/session display and for listing deployed runtime sites. Documentation markdown from `docs/` is rendered at `https://local.example.com/docs/`.
 
-Site hosts such as `https://demo.local.example.com/` are separate from the platform homepage. They are served from runtime deployment state under `runtime/sites/{site}/` and require an `index.html` at the site root. Checked-in examples under `examples/` are not live until they are deployed or seeded into `runtime/sites/`.
+Site hosts such as `https://demo.local.example.com/` are separate from the platform homepage. Bun maps the hostname to the site name (`demo`) and serves runtime deployment state under `runtime/sites/{site}/`; each site requires an `index.html` at the site root. Checked-in examples under `examples/` are not live until they are deployed or seeded into `runtime/sites/`.

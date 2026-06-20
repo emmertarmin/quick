@@ -87,6 +87,10 @@ function authCookieDomain(c: Context) {
   return process.env.QUICK_COOKIE_DOMAIN ?? `.${quickDomain}`;
 }
 
+function authCookieSecure(c: Context) {
+  return forwardedProto(c) === "https";
+}
+
 function authCookieOptions(c: Context, maxAge: number) {
   return {
     domain: authCookieDomain(c),
@@ -94,7 +98,7 @@ function authCookieOptions(c: Context, maxAge: number) {
     maxAge,
     path: "/",
     sameSite: "Lax" as const,
-    secure: true,
+    secure: authCookieSecure(c),
   };
 }
 
@@ -104,7 +108,7 @@ function writeTokenCookies(c: Context, tokens: { access: string; refresh: string
 }
 
 function clearAuthSession(c: Context) {
-  const options = { domain: authCookieDomain(c), path: "/", secure: true };
+  const options = { domain: authCookieDomain(c), path: "/", secure: authCookieSecure(c) };
   deleteCookie(c, AUTH_ACCESS_COOKIE, options);
   deleteCookie(c, AUTH_REFRESH_COOKIE, options);
   deleteCookie(c, AUTH_RETURN_TO_COOKIE, options);
@@ -451,7 +455,7 @@ authRoutes.openapi(
 
   writeTokenCookies(c, exchanged.tokens);
   const returnTo = sanitizeReturnTo(getCookie(c, AUTH_RETURN_TO_COOKIE));
-  deleteCookie(c, AUTH_RETURN_TO_COOKIE, { domain: authCookieDomain(c), path: "/", secure: true });
+  deleteCookie(c, AUTH_RETURN_TO_COOKIE, { domain: authCookieDomain(c), path: "/", secure: authCookieSecure(c) });
 
   return c.redirect(returnTo);
   },

@@ -2,6 +2,7 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import { upgradeWebSocket } from "hono/bun";
 import type { WSContext } from "hono/ws";
 import type { JsonBlob, QuickUser } from "@quick/shared";
+import { getPublicRequestSite } from "../public";
 import { readAuthSession } from "./auth";
 
 const maxChannelLength = 100;
@@ -39,6 +40,10 @@ const channels = new Map<string, Set<RealtimeClient>>();
 function siteFromHeaderValue(value: string | undefined) {
   const site = value?.trim();
   return site && site.length > 0 ? site : undefined;
+}
+
+function siteFromRequest(request: Request, headerValue: string | undefined) {
+  return siteFromHeaderValue(headerValue) ?? getPublicRequestSite(request);
 }
 
 function isJsonBlob(value: unknown): value is JsonBlob {
@@ -216,82 +221,82 @@ function handleClientMessage(client: RealtimeClient, message: ClientMessage) {
 }
 
 export function registerRealtimeRoutes(app: OpenAPIHono) {
-  app.get(
-    "/realtime/ws",
-    upgradeWebSocket(async (c) => {
-      const site = siteFromHeaderValue(c.req.header("X-Quick-Site"));
-      const channel = sanitizeName(c.req.query("channel"), "default", maxChannelLength);
-      const session = await readAuthSession(c);
+  const realtimeWebSocket = upgradeWebSocket(async (c) => {
+    const site = siteFromRequest(c.req.raw, c.req.header("X-Quick-Site"));
+    const channel = sanitizeName(c.req.query("channel"), "default", maxChannelLength);
+    const session = await readAuthSession(c);
 
-      if (!site || !channel) {
-        return {
-          onOpen(_event, ws) {
-            ws.close(1008, !site ? "Missing trusted X-Quick-Site header" : "Invalid channel name");
-          },
-        };
-      }
-
-      let client: RealtimeClient | undefined;
-
+    if (!site || !channel) {
       return {
         onOpen(_event, ws) {
-          client = {
-            id: crypto.randomUUID(),
-            site,
-            channel,
-            user: session?.user ?? null,
-            ws,
-          };
-
-          const key = channelKey(site, channel);
-          const clients = channels.get(key) ?? new Set<RealtimeClient>();
-          clients.add(client);
-          channels.set(key, clients);
-
-          sendJson(client, {
-            type: "ready",
-            connection_id: client.id,
-            site,
-            channel,
-            user: client.user,
-          });
-
-          client.heartbeat = setInterval(() => {
-            if (client) {
-              sendJson(client, { type: "heartbeat", sent_at: new Date().toISOString() });
-            }
-          }, heartbeatIntervalMs);
-        },
-
-        onMessage(event) {
-          if (!client) {
-            return;
-          }
-
-          const message = readMessage(event.data);
-
-          if (!message) {
-            sendJson(client, { type: "error", error: "Invalid realtime message" });
-            return;
-          }
-
-          handleClientMessage(client, message);
-        },
-
-        onClose() {
-          if (client) {
-            removeClient(client);
-            client = undefined;
-          }
-        },
-
-        onError() {
-          if (client) {
-            removeClient(client);
-            client = undefined;
-          }
+          ws.close(1008, !site ? "Missing trusted X-Quick-Site header" : "Invalid channel name");
         },
       };
-    }),
-  );
+    }
+
+    let client: RealtimeClient | undefined;
+
+    return {
+      onOpen(_event, ws) {
+        client = {
+          id: crypto.randomUUID(),
+          site,
+          channel,
+          user: session?.user ?? null,
+          ws,
+        };
+
+        const key = channelKey(site, channel);
+        const clients = channels.get(key) ?? new Set<RealtimeClient>();
+        clients.add(client);
+        channels.set(key, clients);
+
+        sendJson(client, {
+          type: "ready",
+          connection_id: client.id,
+          site,
+          channel,
+          user: client.user,
+        });
+
+        client.heartbeat = setInterval(() => {
+          if (client) {
+            sendJson(client, { type: "heartbeat", sent_at: new Date().toISOString() });
+          }
+        }, heartbeatIntervalMs);
+      },
+
+      onMessage(event) {
+        if (!client) {
+          return;
+        }
+
+        const message = readMessage(event.data);
+
+        if (!message) {
+          sendJson(client, { type: "error", error: "Invalid realtime message" });
+          return;
+        }
+
+        handleClientMessage(client, message);
+      },
+
+      onClose() {
+        if (client) {
+          removeClient(client);
+          client = undefined;
+        }
+      },
+
+      onError() {
+        if (client) {
+          removeClient(client);
+          client = undefined;
+        }
+      },
+    };
+  });
+
+  app.get("/realtime/ws", realtimeWebSocket);
+  app.get("/api/realtime/ws", realtimeWebSocket);
 }

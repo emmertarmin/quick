@@ -42,6 +42,6 @@ For the full product story and API overview, start with [[docs/index|the Quick d
 
 ## Current shape
 
-This repo is a Bun monorepo with a Hono/Bun API server, browser SDK, CLI, NGINX routing, SQLite/Drizzle persistence, OpenAuth-based auth, deploy support, and example static apps.
+This repo is a Bun monorepo with a Hono/Bun platform server, browser SDK, CLI, optional NGINX TLS frontend, SQLite/Drizzle persistence, OpenAuth-based auth, deploy support, and example static apps.
 
 It is intentionally small. The ambition is not to be another application framework; it is to make the smallest useful internal app feel one command away.
