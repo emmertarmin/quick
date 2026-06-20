@@ -27,7 +27,11 @@ function openBrowser(url: string) {
   }
 }
 
-async function waitForAuthorizationCode() {
+function escapeHtml(value: string) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+async function waitForAuthorizationCode(successRedirectUrl: string) {
   let resolveCode: (code: string) => void;
   let rejectCode: (error: Error) => void;
 
@@ -35,6 +39,10 @@ async function waitForAuthorizationCode() {
     resolveCode = resolve;
     rejectCode = reject;
   });
+
+  const stopServerSoon = () => {
+    setTimeout(() => server.stop(true), 500);
+  };
 
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -49,6 +57,7 @@ async function waitForAuthorizationCode() {
       const error = url.searchParams.get("error");
       if (error) {
         rejectCode(new Error(error));
+        stopServerSoon();
         return new Response("Quick login failed. You can close this tab.", {
           headers: { "Content-Type": "text/plain; charset=utf-8" },
           status: 400,
@@ -58,6 +67,7 @@ async function waitForAuthorizationCode() {
       const code = url.searchParams.get("code");
       if (!code) {
         rejectCode(new Error("Missing authorization code"));
+        stopServerSoon();
         return new Response("Quick login failed: missing authorization code. You can close this tab.", {
           headers: { "Content-Type": "text/plain; charset=utf-8" },
           status: 400,
@@ -65,15 +75,57 @@ async function waitForAuthorizationCode() {
       }
 
       resolveCode(code);
-      return new Response("Quick login complete. You can close this tab and return to your terminal.", {
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
+      stopServerSoon();
+      return new Response(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="refresh" content="5; url=${escapeHtml(successRedirectUrl)}">
+    <title>Quick login complete</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #ffffff; --text: #111827; --muted: #6b7280; --border: #bbf7d0; --surface: #f0fdf4; --link: #15803d; --success: #16a34a; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 2rem; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      main { width: min(100%, 28rem); padding: 2rem; border: 1px solid var(--border); border-radius: 0.9rem; background: var(--surface); text-align: center; box-shadow: 0 20px 50px rgb(22 163 74 / 0.12); }
+      .mark { display: inline-grid; place-items: center; width: 2.75rem; height: 2.75rem; margin-bottom: 1rem; border-radius: 999px; background: var(--success); color: white; font-size: 1.6rem; line-height: 1; }
+      h1 { margin: 0 0 0.75rem; font-size: 1.5rem; line-height: 1.2; }
+      p { margin: 0; color: var(--muted); line-height: 1.5; }
+      p + p { margin-top: 0.5rem; }
+      a { color: var(--link); }
+      @media (prefers-color-scheme: dark) { :root { --bg: #0b0f19; --text: #f9fafb; --muted: #9ca3af; --border: #14532d; --surface: #052e16; --link: #86efac; --success: #22c55e; } main { box-shadow: none; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true">✓</div>
+      <h1>Quick login complete</h1>
+      <p>You can close this tab and return to your terminal.</p>
+      <p>Redirecting to <a href="${escapeHtml(successRedirectUrl)}">Quick</a> in <span id="countdown">5</span> seconds…</p>
+    </main>
+    <script>
+      const redirectUrl = ${JSON.stringify(successRedirectUrl)};
+      const countdown = document.querySelector("#countdown");
+      let remaining = 5;
+      const interval = setInterval(() => {
+        remaining -= 1;
+        countdown.textContent = String(remaining);
+        if (remaining <= 0) {
+          clearInterval(interval);
+          window.location.assign(redirectUrl);
+        }
+      }, 1000);
+    </script>
+  </body>
+</html>`, {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     },
   });
 
   return {
     callbackUrl: `http://127.0.0.1:${server.port}/callback`,
-    code: codePromise.finally(() => server.stop(true)),
+    code: codePromise,
   };
 }
 
@@ -138,7 +190,7 @@ const loginCommand: CommandDefinition = {
   execute: async ({ values }) => {
     const remote = await resolveRemote({ remoteFlag: values.remote });
     const client = createClient({ clientID: "quick-cli", issuer: remote });
-    const callback = await waitForAuthorizationCode();
+    const callback = await waitForAuthorizationCode(remote);
     const { url } = await client.authorize(callback.callbackUrl, "code");
 
     console.log(`Opening browser for Quick login: ${url}`);

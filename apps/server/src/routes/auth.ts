@@ -190,18 +190,41 @@ function escapeHtml(value: string) {
 }
 
 function codeProviderPage(state: CodeProviderState, form?: FormData, error?: CodeProviderError) {
-  const email = form?.get("email")?.toString() ?? "dev@quick.local";
-  const errorHtml = error ? `<p style="color: #b00020">${escapeHtml(error.type)}</p>` : "";
-  const codeHtml = state.type === "code" ? `<p>Development code: <strong>${escapeHtml(state.code)}</strong></p>` : "";
+  const email = form?.get("email")?.toString() ?? (state.type === "code" ? state.claims.email : "") ?? "";
+  const errorHtml = error ? `<p class="error">${escapeHtml(error.type)}</p>` : "";
+  const codeHtml = state.type === "code" ? `<p class="notice">Development code: <strong>${escapeHtml(state.code)}</strong></p>` : "";
 
   return new Response(`<!doctype html>
-<title>Quick login</title>
-<body style="font-family: sans-serif; max-width: 36rem; margin: 4rem auto; line-height: 1.4">
-  <h1>Quick login</h1>
-  ${errorHtml}
-  ${codeHtml}
-  ${state.type === "start" ? `<form method="post"><input type="hidden" name="action" value="request"><label>Email <input name="email" type="email" value="${escapeHtml(email)}"></label> <button>Send code</button></form>` : `<form method="post"><input type="hidden" name="action" value="verify"><label>Code <input name="code" inputmode="numeric" autofocus></label> <button>Verify</button></form><form method="post"><input type="hidden" name="action" value="resend"><input type="hidden" name="email" value="${escapeHtml(email)}"><button>Resend</button></form>`}
-</body>`, {
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quick login</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #ffffff; --text: #111827; --muted: #6b7280; --border: #e5e7eb; --surface: #f9fafb; --link: #1d4ed8; --danger: #b91c1c; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 2rem; background: var(--bg); color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      main { width: min(100%, 24rem); padding: 2rem; border: 1px solid var(--border); border-radius: 0.9rem; background: var(--surface); box-shadow: 0 20px 50px rgb(17 24 39 / 0.08); }
+      h1 { margin: 0 0 1.25rem; font-size: 1.5rem; line-height: 1.2; }
+      form { display: grid; gap: 0.9rem; margin: 0; }
+      form + form { margin-top: 0.75rem; }
+      label { display: grid; gap: 0.4rem; color: var(--muted); font-size: 0.9rem; }
+      input { width: 100%; border: 1px solid var(--border); border-radius: 0.55rem; padding: 0.7rem 0.8rem; background: var(--bg); color: var(--text); font: inherit; }
+      button { border: 0; border-radius: 0.55rem; padding: 0.7rem 0.9rem; background: var(--link); color: white; font: inherit; font-weight: 600; cursor: pointer; }
+      .notice { margin: 0 0 1rem; color: var(--muted); }
+      .error { margin: 0 0 1rem; color: var(--danger); }
+      @media (prefers-color-scheme: dark) { :root { --bg: #0b0f19; --text: #f9fafb; --muted: #9ca3af; --border: #273244; --surface: #111827; --link: #2563eb; --danger: #fca5a5; } main { box-shadow: none; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Quick login</h1>
+      ${errorHtml}
+      ${codeHtml}
+      ${state.type === "start" ? `<form method="post"><input type="hidden" name="action" value="request"><label>Email <input name="email" type="email" value="${escapeHtml(email)}" autofocus></label><button>Send code</button></form>` : `<form method="post"><input type="hidden" name="action" value="verify"><label>Code <input name="code" inputmode="numeric" autofocus></label><button>Verify</button></form><form method="post"><input type="hidden" name="action" value="resend"><input type="hidden" name="email" value="${escapeHtml(email)}"><button>Resend</button></form>`}
+    </main>
+  </body>
+</html>`, {
     headers: { "Content-Type": "text/html; charset=utf-8" },
   });
 }
