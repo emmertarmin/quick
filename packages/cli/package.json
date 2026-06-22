@@ -31,7 +31,7 @@
   },
   "scripts": {
     "dev": "bun --watch run src/index.ts",
-    "build": "rm -rf dist && bun build ./src/index.ts --outfile dist/index.js --target bun",
+    "build": "rm -rf dist && bun build ./src/index.ts --outfile dist/index.js --target bun --packages external",
     "tsc": "tsc -p tsconfig.json --noEmit",
     "test": "bun test",
     "prepack": "bun run build",
