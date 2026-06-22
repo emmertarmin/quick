@@ -9,6 +9,7 @@ import { loadAuthForRemote, refreshAuthFromResponse, verifyAuthForRemote } from 
 const siteNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 type QuickSiteConfig = {
+  $schema?: string;
   site: string;
 };
 
@@ -60,7 +61,11 @@ async function readSiteConfig(path: string) {
   return { site: parsed.site };
 }
 
-async function chooseSiteName(configPath: string, cwd: string) {
+function repoConfigContents(site: string, schemaUrl: string) {
+  return `${JSON.stringify({ $schema: schemaUrl, site }, null, 2)}\n`;
+}
+
+async function chooseSiteName(configPath: string, cwd: string, schemaUrl: string) {
   const existing = await readSiteConfig(configPath);
   if (existing) {
     validateSiteName(existing.site);
@@ -72,7 +77,7 @@ async function chooseSiteName(configPath: string, cwd: string) {
   const site = normalizeSiteName(answer || defaultName);
   validateSiteName(site);
 
-  await writeFile(configPath, `${JSON.stringify({ site }, null, 2)}\n`, "utf8");
+  await writeFile(configPath, repoConfigContents(site, schemaUrl), "utf8");
   return { site, created: true };
 }
 
@@ -151,7 +156,8 @@ export const initCommand: CommandDefinition = {
     const targetDirectory = resolve(path ?? process.cwd());
     await mkdir(targetDirectory, { recursive: true });
     const siteConfigPath = join(targetDirectory, ".quick.json");
-    const chosen = await chooseSiteName(siteConfigPath, targetDirectory);
+    const schemaUrl = apiUrl(remote, "/schemas/quick.schema.json");
+    const chosen = await chooseSiteName(siteConfigPath, targetDirectory, schemaUrl);
     console.log(`${chosen.created ? "Created" : "Found"} .quick.json with site '${chosen.site}'.`);
 
     const collision = await checkSiteCollision(remote, chosen.site, currentAuth);
@@ -169,7 +175,7 @@ export const initCommand: CommandDefinition = {
         if (nextCollision.exists) {
           throw new Error(`Site '${nextSite}' also exists. Re-run \`quick init\` and choose another name, or confirm it explicitly.`);
         }
-        await writeFile(siteConfigPath, `${JSON.stringify({ site: nextSite }, null, 2)}\n`, "utf8");
+        await writeFile(siteConfigPath, repoConfigContents(nextSite, schemaUrl), "utf8");
         console.log(`Updated .quick.json with site '${nextSite}'.`);
       } else {
         console.log(`Confirmed existing site '${chosen.site}'.`);

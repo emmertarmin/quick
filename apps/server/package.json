@@ -12,6 +12,7 @@
     "@openauthjs/openauth": "^0.4.3",
     "@quick/db": "workspace:*",
     "@quick/shared": "workspace:*",
+    "fflate": "^0.8.3",
     "hono": "latest",
     "valibot": "^1.4.1",
     "zod": "latest"

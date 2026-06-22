@@ -4,10 +4,9 @@ import type { Context } from "hono";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import { collections } from "@quick/db";
 import type { JsonBlob, QuickDocument } from "@quick/shared";
-import { filesRoot } from "../config";
+import { filesRoot, maxUploadBytes } from "../config";
 
 const filesCollection = "_quick_files";
-const maxUploadBytes = 25 * 1024 * 1024;
 const siteNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const fileIdPattern = /^[0-9a-f-]{36}$/i;
 

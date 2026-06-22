@@ -13,6 +13,7 @@ server {
   listen 443 ssl;
   http2 on;
   server_name ${QUICK_DOMAIN} *.${QUICK_DOMAIN};
+  client_max_body_size 25m;
 
   ssl_certificate /etc/nginx/certs/fullchain.pem;
   ssl_certificate_key /etc/nginx/certs/key.pem;

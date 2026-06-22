@@ -2,11 +2,16 @@ import { loadConfig } from "./config.js";
 
 export type ResolveRemoteOptions = {
   remoteFlag?: string | boolean;
+  repoRemote?: string;
 };
 
 export async function resolveRemote(options: ResolveRemoteOptions = {}) {
   if (typeof options.remoteFlag === "string" && options.remoteFlag.length > 0) {
     return normalizeRemote(options.remoteFlag);
+  }
+
+  if (options.repoRemote && options.repoRemote.length > 0) {
+    return normalizeRemote(options.repoRemote);
   }
 
   if (process.env.QUICK_REMOTE && process.env.QUICK_REMOTE.length > 0) {
@@ -27,7 +32,7 @@ export async function resolveRemote(options: ResolveRemoteOptions = {}) {
   throw new Error("No Quick remote configured. Set --remote, QUICK_REMOTE, config remote, or QUICK_DOMAIN.");
 }
 
-function normalizeRemote(value: string) {
+export function normalizeRemote(value: string) {
   let url: URL;
   try {
     url = new URL(value);

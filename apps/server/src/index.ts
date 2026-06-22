@@ -5,6 +5,7 @@ import { healthResponseSchema } from "./schemas";
 import { authRoutes } from "./routes/auth";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
+import { registerSchemaRoutes } from "./routes/schemas";
 import { registerSdkRoutes } from "./routes/sdk";
 import { registerSkillRoutes } from "./routes/skills";
 import { registerSiteRoutes } from "./routes/sites";
@@ -41,6 +42,7 @@ app.openapi(
 app.route("/", authRoutes);
 registerSdkRoutes(app);
 registerSkillRoutes(app);
+registerSchemaRoutes(app);
 registerCollectionRoutes(app);
 registerFileRoutes(app);
 registerSiteStatsRoutes(app);

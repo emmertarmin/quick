@@ -19,6 +19,7 @@ export const publicApiBase = `${publicOrigin}/api`;
 export const port = Number(process.env.PORT ?? 3000);
 export const sitesRoot = process.env.QUICK_SITES_ROOT ?? join(runtimeRoot, "sites");
 export const filesRoot = process.env.QUICK_FILES_ROOT ?? join(runtimeRoot, "files");
+export const maxUploadBytes = 25 * 1024 * 1024;
 
 const entraClientID = process.env.QUICK_ENTRA_CLIENT_ID?.trim();
 const entraClientSecret = process.env.QUICK_ENTRA_CLIENT_SECRET?.trim();

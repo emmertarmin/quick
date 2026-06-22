@@ -34,20 +34,43 @@ quick --version
 Commands that talk to a Quick server resolve the remote in this order:
 
 1. `--remote <url>`
-2. `QUICK_REMOTE`
-3. `quick config set remote <url>`
-4. `QUICK_DOMAIN`, optionally with `QUICK_SCHEME` (defaults to `https`)
+2. `remote` in repo-local `.quick.json`
+3. `QUICK_REMOTE`
+4. `quick config set remote <url>`
+5. `QUICK_DOMAIN`, optionally with `QUICK_SCHEME` (defaults to `https`)
 
 Remote URLs must use `http` or `https`. Query strings, hashes, and trailing slashes are normalized away.
 
 ## Configuration files
 
-The CLI stores config using the XDG config directory:
+The CLI stores global config using the XDG config directory:
 
 - Config: `$XDG_CONFIG_HOME/quick/config.json`, or `~/.config/quick/config.json`
 - Auth state: same directory, `auth.json`
 
 Auth state is written with `0600` permissions where supported.
+
+A repo may also contain `.quick.json`. `quick init` creates a minimal file with only `$schema` and `site`; add other defaults explicitly when you want commands to infer them:
+
+```json
+{
+  "$schema": "https://quick.example.com/api/schemas/quick.schema.json",
+  "site": "gallery",
+  "remote": "https://quick.example.com",
+  "deploy": {
+    "input": "dist",
+    "confirmOverwrite": true
+  },
+  "thumbnail": {
+    "capture": {
+      "format": "webp",
+      "output": ".quick/thumbnail.webp"
+    }
+  }
+}
+```
+
+The schema is served by each Quick server at `/api/schemas/quick.schema.json`.
 
 ## Commands
 
@@ -139,7 +162,7 @@ Arguments:
 
 - `[path]` — directory to initialize. Defaults to the current working directory.
 
-`quick init` writes `.quick.json`, verifies the site name, and installs the Quick agent skillfile under `.agents/skills/quick/SKILL.md`.
+`quick init` writes a minimal `.quick.json` containing `$schema` and `site`, verifies the site name, and installs the Quick agent skillfile under `.agents/skills/quick/SKILL.md`.
 
 Examples:
 
@@ -153,13 +176,15 @@ quick init ./site
 Package a static site directory and upload it to a Quick server.
 
 ```sh
-quick deploy [options] <dir> [site]
+quick deploy [options] [dir] [site]
 ```
 
 Arguments:
 
-- `<dir>` — directory containing static site files. It must exist and contain `index.html`.
-- `[site]` — site name. Use lowercase letters, numbers, and hyphens; it must start and end with a letter or number and can be up to 63 characters. If omitted, Quick reads `site` from `<dir>/.quick.json`.
+- `[dir]` — directory containing static site files. It must exist and contain `index.html`. If omitted, Quick reads `deploy.input` from repo-local `.quick.json`.
+- `[site]` — site name. Use lowercase letters, numbers, and hyphens; it must start and end with a letter or number and can be up to 63 characters. If omitted, Quick reads `site` from repo-local `.quick.json`.
+
+A single positional argument is always interpreted as `[dir]`, not `[site]`. To deploy a configured input to a different site, pass both arguments, for example `quick deploy . fun`.
 
 Options:
 
@@ -169,6 +194,7 @@ Options:
 Examples:
 
 ```sh
+quick deploy
 quick deploy .
 quick deploy . fun
 quick deploy ./site fun --remote https://quick.example.com
@@ -181,9 +207,54 @@ Deploy creates a gzipped tar archive of the directory and sends it to the server
 quick auth login --remote https://quick.example.com
 ```
 
-If the target site already exists, the server may return a conflict. In an interactive terminal, the CLI asks you to type the site name to confirm overwrite.
+If the target site already exists, the server may return a conflict. In an interactive terminal, the CLI asks you to type the site name to confirm overwrite. Set `deploy.confirmOverwrite` to `true` in `.quick.json` only for repos where overwriting that site should be the default.
 
 On success, the CLI prints the deployed site name, file count, and URL.
+
+### `quick thumbnail`
+
+Capture and upload site thumbnail images.
+
+```sh
+quick thumbnail <subcommand>
+```
+
+#### `quick thumbnail capture`
+
+Capture an authenticated 4:3 screenshot for one or more sites.
+
+```sh
+quick thumbnail capture [options] [site...]
+```
+
+If `[site...]` is omitted, Quick reads `site` from repo-local `.quick.json`. Repo config can also set `thumbnail.capture.format` and `thumbnail.capture.output`.
+
+Options:
+
+- `--remote <url>` — override the resolved Quick server URL.
+- `--output webp|png` — image format. Defaults to `webp`, unless configured.
+- `--file <path>` — output file path. Only valid when capturing one site.
+
+Examples:
+
+```sh
+quick thumbnail capture
+quick thumbnail capture gallery
+quick thumbnail upload gallery ~/.local/share/quick/thumbnails/gallery.webp
+```
+
+#### `quick thumbnail upload`
+
+Upload a selected thumbnail image.
+
+```sh
+quick thumbnail upload [options] <site> <file>
+```
+
+Options:
+
+- `--remote <url>` — override the resolved Quick server URL.
+- `--yes`, `-y` — upload without interactive confirmation.
 
 ### `quick purge`
 

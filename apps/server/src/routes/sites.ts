@@ -1,10 +1,11 @@
 import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import type { Context } from "hono";
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import { unzipSync } from "fflate";
 import { sqlite, sites } from "@quick/db";
 import type { QuickSite } from "@quick/shared";
-import { filesRoot, quickDomain, quickScheme, sitesRoot } from "../config";
+import { filesRoot, maxUploadBytes, quickDomain, quickScheme, sitesRoot } from "../config";
 import { readAuthSession } from "./auth";
 
 const siteNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -17,12 +18,57 @@ function sitePath(site: string) {
   return join(sitesRoot, site);
 }
 
-function deployError(message: string) {
-  return { error: message };
+function deployError(message: string, details: Record<string, unknown> = {}) {
+  return { error: message, ...details };
+}
+
+class UploadTooLargeError extends Error {
+  constructor(public readonly maxUploadBytes: number) {
+    super(`Upload is too large; maximum size is ${maxUploadBytes} bytes`);
+  }
 }
 
 function siteUrl(site: string) {
   return `${quickScheme}://${site}.${quickDomain}`;
+}
+
+const thumbnailContentTypes = new Map([
+  [".webp", "image/webp"],
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+]);
+const maxThumbnailBytes = 5 * 1024 * 1024;
+
+function thumbnailDir() {
+  return join(filesRoot, "_thumbnails");
+}
+
+function thumbnailUrl(site: string) {
+  return `/api/sites/${encodeURIComponent(site)}/thumbnail`;
+}
+
+async function thumbnailFile(site: string) {
+  for (const extension of thumbnailContentTypes.keys()) {
+    const path = join(thumbnailDir(), `${site}${extension}`);
+    const info = await stat(path).catch(() => undefined);
+    if (info?.isFile()) return path;
+  }
+  return undefined;
+}
+
+async function siteThumbnailFields(site: string) {
+  return await thumbnailFile(site) ? { thumbnailUrl: thumbnailUrl(site) } : {};
+}
+
+function thumbnailExtension(contentType: string) {
+  const normalized = contentType.split(";")[0]?.trim().toLowerCase();
+  switch (normalized) {
+    case "image/webp": return ".webp";
+    case "image/png": return ".png";
+    case "image/jpeg": return ".jpg";
+    default: return undefined;
+  }
 }
 
 async function hasSiteIndex(site: string) {
@@ -63,6 +109,7 @@ async function listSites(): Promise<QuickSite[]> {
               fileCount: metadata.fileCount,
             }
           : {}),
+        ...await siteThumbnailFields(site),
       };
     }),
   );
@@ -116,6 +163,57 @@ async function validateTarball(tarballPath: string) {
   const unsafe = entries.find((entry) => !isSafeTarEntry(entry));
   if (unsafe) {
     throw new Error(`Deploy archive contains unsafe path: ${unsafe}`);
+  }
+}
+
+function normalizeArchiveEntry(entry: string) {
+  return entry.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/$/, "");
+}
+
+async function extractZipArchive(zip: ArrayBuffer, extractPath: string) {
+  let entries: Record<string, Uint8Array>;
+  const maxExtractedBytes = 100 * 1024 * 1024;
+  let extractedBytes = 0;
+  let fileCount = 0;
+  let validationError: Error | undefined;
+
+  try {
+    entries = unzipSync(new Uint8Array(zip), {
+      filter(file) {
+        const normalized = normalizeArchiveEntry(file.name);
+
+        if (!isSafeTarEntry(file.name)) {
+          validationError = new Error(`Upload archive contains unsafe path: ${file.name}`);
+          throw validationError;
+        }
+
+        if (file.name.endsWith("/") || !normalized || normalized === ".") return false;
+
+        fileCount += 1;
+        extractedBytes += file.originalSize;
+        if (extractedBytes > maxExtractedBytes) {
+          validationError = new Error("Upload archive expands to more than 100 MB");
+          throw validationError;
+        }
+
+        return true;
+      },
+    });
+  } catch (error) {
+    if (validationError) throw validationError;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not read zip archive: ${message}`);
+  }
+
+  if (fileCount === 0) {
+    throw new Error("Upload archive is empty");
+  }
+
+  for (const [entry, bytes] of Object.entries(entries)) {
+    const normalized = normalizeArchiveEntry(entry);
+    const target = join(extractPath, normalized);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, bytes);
   }
 }
 
@@ -185,6 +283,7 @@ function databaseCounts(site: string): PurgeDatabaseCounts {
 async function purgeSite(site: string): Promise<PurgeResult> {
   const sourcePath = sitePath(site);
   const fileUploadsPath = join(filesRoot, site);
+  const thumbnailPath = await thumbnailFile(site);
 
   await assertInsideSitesRoot(sourcePath);
   await assertInsideFilesRoot(fileUploadsPath);
@@ -197,6 +296,7 @@ async function purgeSite(site: string): Promise<PurgeResult> {
 
   await rm(sourcePath, { recursive: true, force: true });
   await rm(fileUploadsPath, { recursive: true, force: true });
+  if (thumbnailPath) await rm(thumbnailPath, { force: true });
 
   sqlite.transaction((purgedSite: string) => {
     sqlite.prepare("delete from json_documents where site = ?").run(purgedSite);
@@ -211,30 +311,19 @@ async function purgeSite(site: string): Promise<PurgeResult> {
   };
 }
 
-async function publishDeploy(site: string, tarball: ArrayBuffer) {
-  await mkdir(sitesRoot, { recursive: true });
+async function publishExtractedSite(site: string, extractPath: string) {
+  const index = await stat(join(extractPath, "index.html")).catch(() => undefined);
+  if (!index?.isFile()) {
+    throw new Error("Upload must contain index.html at its root");
+  }
 
-  const tempRoot = await mkdtemp(join(sitesRoot, ".quick-deploy-"));
-  const tarballPath = join(tempRoot, "site.tar.gz");
-  const extractPath = join(tempRoot, "site");
+  const fileCount = await countFilesAndRejectSymlinks(extractPath);
   const targetPath = sitePath(site);
-  const oldPath = join(tempRoot, "old-site");
+  const oldRoot = await mkdtemp(join(sitesRoot, ".quick-old-"));
+  const oldPath = join(oldRoot, "site");
 
   try {
-    await writeFile(tarballPath, Buffer.from(tarball));
-    await validateTarball(tarballPath);
-    await mkdir(extractPath);
-    await runTar(["--no-same-owner", "--no-same-permissions", "-xzf", tarballPath, "-C", extractPath]);
-
-    const index = await stat(join(extractPath, "index.html")).catch(() => undefined);
-    if (!index?.isFile()) {
-      throw new Error("Deploy archive must contain index.html at its root");
-    }
-
-    const fileCount = await countFilesAndRejectSymlinks(extractPath);
-
     await assertInsideSitesRoot(targetPath);
-    await rm(oldPath, { recursive: true, force: true });
 
     const existing = await stat(targetPath).catch(() => undefined);
     if (existing) {
@@ -250,11 +339,146 @@ async function publishDeploy(site: string, tarball: ArrayBuffer) {
       throw error;
     }
 
-    await rm(oldPath, { recursive: true, force: true });
     return { fileCount };
+  } finally {
+    await rm(oldRoot, { recursive: true, force: true });
+  }
+}
+
+async function publishDeploy(site: string, tarball: ArrayBuffer) {
+  await mkdir(sitesRoot, { recursive: true });
+
+  const tempRoot = await mkdtemp(join(sitesRoot, ".quick-deploy-"));
+  const tarballPath = join(tempRoot, "site.tar.gz");
+  const extractPath = join(tempRoot, "site");
+
+  try {
+    await writeFile(tarballPath, Buffer.from(tarball));
+    await validateTarball(tarballPath);
+    await mkdir(extractPath);
+    await runTar(["--no-same-owner", "--no-same-permissions", "-xzf", tarballPath, "-C", extractPath]);
+    return await publishExtractedSite(site, extractPath);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+}
+
+async function browserUploadPublishPath(extractPath: string) {
+  const rootIndex = await stat(join(extractPath, "index.html")).catch(() => undefined);
+  if (rootIndex?.isFile()) {
+    return extractPath;
+  }
+
+  const entries = await readdir(extractPath, { withFileTypes: true });
+  const directories = entries.filter((entry) => entry.isDirectory());
+  const files = entries.filter((entry) => entry.isFile());
+
+  if (files.length === 0 && directories.length === 1) {
+    const nestedPath = join(extractPath, directories[0].name);
+    const nestedIndex = await stat(join(nestedPath, "index.html")).catch(() => undefined);
+    if (nestedIndex?.isFile()) {
+      return nestedPath;
+    }
+  }
+
+  const rootNames = entries.slice(0, 8).map((entry) => entry.name).join(", ");
+  const detail = rootNames ? ` Root entries found: ${rootNames}${entries.length > 8 ? ", …" : ""}.` : "";
+  throw new Error(`Upload must contain index.html at its root, or inside a single top-level folder.${detail}`);
+}
+
+function looksLikeHtml(bytes: ArrayBuffer) {
+  const prefix = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 512)).trimStart().toLowerCase();
+  return prefix.startsWith("<!doctype html") || prefix.startsWith("<html") || prefix.includes("<head") || prefix.includes("<body");
+}
+
+async function publishBrowserUpload(site: string, file: File) {
+  await mkdir(sitesRoot, { recursive: true });
+
+  if (file.size > maxUploadBytes) {
+    throw new UploadTooLargeError(maxUploadBytes);
+  }
+
+  const tempRoot = await mkdtemp(join(sitesRoot, ".quick-upload-"));
+  const extractPath = join(tempRoot, "site");
+
+  try {
+    await mkdir(extractPath);
+
+    if (file.name.toLowerCase().endsWith(".zip") || file.type === "application/zip" || file.type === "application/x-zip-compressed") {
+      await extractZipArchive(await file.arrayBuffer(), extractPath);
+    } else if (file.name === "index.html" || file.type === "text/html") {
+      const bytes = await file.arrayBuffer();
+      if (!looksLikeHtml(bytes)) {
+        throw new Error("Uploaded HTML file does not look like HTML");
+      }
+      await writeFile(join(extractPath, "index.html"), Buffer.from(bytes));
+    } else {
+      throw new Error("Upload a .zip file or a single index.html file");
+    }
+
+    return await publishExtractedSite(site, await browserUploadPublishPath(extractPath));
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
+function uploadFileFromForm(form: FormData) {
+  const value = form.get("file") ?? form.get("upload");
+  return value instanceof File ? value : undefined;
+}
+
+async function readRequestBodyWithLimit(c: Context, maxBytes: number, errorMessage: string) {
+  const contentLength = c.req.header("Content-Length");
+  const declaredLength = contentLength ? Number(contentLength) : undefined;
+  if (declaredLength !== undefined && Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error(errorMessage);
+  }
+
+  const body = c.req.raw.body;
+  if (!body) return new ArrayBuffer(0);
+
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    total += value.byteLength;
+    if (total > maxBytes) {
+      throw new Error(errorMessage);
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
+}
+
+async function storeThumbnail(site: string, contentType: string, bytes: ArrayBuffer) {
+  const extension = thumbnailExtension(contentType);
+  if (!extension) {
+    throw new Error("Thumbnail must be image/webp, image/png, or image/jpeg");
+  }
+
+  if (bytes.byteLength > maxThumbnailBytes) {
+    throw new Error("Thumbnail must be 5 MB or smaller");
+  }
+
+  await mkdir(thumbnailDir(), { recursive: true });
+  for (const existing of thumbnailContentTypes.keys()) {
+    await rm(join(thumbnailDir(), `${site}${existing}`), { force: true });
+  }
+
+  const path = join(thumbnailDir(), `${site}${extension}`);
+  await writeFile(path, Buffer.from(bytes));
+  return { thumbnailUrl: thumbnailUrl(site) };
 }
 
 export function registerSiteRoutes(app: OpenAPIHono) {
@@ -276,7 +500,56 @@ export function registerSiteRoutes(app: OpenAPIHono) {
       return c.json({ site, exists: false, url: siteUrl(site), hasIndex: false }, 200);
     }
 
-    return c.json({ ...metadata, site, exists: true, url: siteUrl(site), hasIndex }, 200);
+    return c.json({ ...metadata, site, exists: true, url: siteUrl(site), hasIndex, ...await siteThumbnailFields(site) }, 200);
+  });
+
+  app.get("/sites/:site/thumbnail", async (c) => {
+    const site = c.req.param("site");
+
+    if (!validateSiteName(site)) {
+      return c.json(deployError("Invalid site name"), 400);
+    }
+
+    const path = await thumbnailFile(site);
+    if (!path) {
+      return c.json(deployError("Thumbnail not found"), 404);
+    }
+
+    return new Response(Bun.file(path), {
+      headers: {
+        "Cache-Control": "no-cache",
+        "Content-Type": thumbnailContentTypes.get(extname(path).toLowerCase()) ?? "application/octet-stream",
+      },
+    });
+  });
+
+  app.put("/sites/:site/thumbnail", async (c) => {
+    const site = c.req.param("site");
+
+    if (!validateSiteName(site)) {
+      return c.json(deployError("Invalid site name"), 400);
+    }
+
+    const session = await requireDeployIdentity(c);
+    if (!session) {
+      return c.json(deployError("Authentication required"), 401);
+    }
+
+    const existing = sites.get(site);
+    const hasIndex = await hasSiteIndex(site);
+    if (!existing && !hasIndex) {
+      return c.json(deployError("Site does not exist"), 404);
+    }
+
+    try {
+      const contentType = c.req.header("Content-Type") ?? "";
+      const uploaded = await readRequestBodyWithLimit(c, maxThumbnailBytes, "Thumbnail must be 5 MB or smaller");
+      const thumbnail = await storeThumbnail(site, contentType, uploaded);
+      return c.json({ site, exists: true, url: siteUrl(site), hasIndex, ...thumbnail }, 200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json(deployError(message), 400);
+    }
   });
 
   app.delete("/sites/:site", async (c) => {
@@ -303,6 +576,55 @@ export function registerSiteRoutes(app: OpenAPIHono) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return c.json(deployError(message), 500);
+    }
+  });
+
+  app.post("/sites/:site/upload", async (c) => {
+    const site = c.req.param("site");
+
+    if (!validateSiteName(site)) {
+      return c.json(deployError("Invalid site name"), 400);
+    }
+
+    const session = await requireDeployIdentity(c);
+    if (!session) {
+      return c.json(deployError("Authentication required"), 401);
+    }
+
+    const existing = sites.get(site);
+    if (existing && c.req.header("X-Quick-Confirm-Overwrite") !== site) {
+      return c.json(
+        {
+          error: "Site exists",
+          ...existing,
+        },
+        409,
+      );
+    }
+
+    try {
+      const form = await c.req.formData();
+      const file = uploadFileFromForm(form);
+      if (!file) {
+        return c.json(deployError("Expected multipart upload with a file field"), 400);
+      }
+
+      const { fileCount } = await publishBrowserUpload(site, file);
+      const metadata = sites.recordDeploy({
+        site,
+        deployer: session.user,
+        deployedAt: new Date().toISOString(),
+        fileCount,
+      });
+
+      return c.json({ ...metadata, url: siteUrl(site), hasIndex: true }, existing ? 200 : 201);
+    } catch (error) {
+      if (error instanceof UploadTooLargeError) {
+        return c.json(deployError(error.message, { maxUploadBytes: error.maxUploadBytes }), 413);
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      return c.json(deployError(message), 400);
     }
   });
 

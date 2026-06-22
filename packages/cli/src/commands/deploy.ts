@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import type { CommandDefinition } from "../cli/types.js";
 import { loadAuthForRemote, refreshAuthFromResponse } from "./auth.js";
+import { findQuickRepoConfig, printRepoConfigHint, resolveRepoPath } from "../config/repo.js";
 import { resolveRemote } from "../config/remote.js";
 import type { StoredAuth } from "../config/auth.js";
 
@@ -32,27 +33,6 @@ async function resolveDeployDirectory(path: string) {
   }
 
   return absolutePath;
-}
-
-type QuickSiteConfig = {
-  site: string;
-};
-
-async function readDeploySiteConfig(directory: string) {
-  const path = join(directory, ".quick.json");
-  const text = await readFile(path, "utf8").catch((error) => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  });
-
-  if (text === undefined) return undefined;
-
-  const parsed = JSON.parse(text) as Partial<QuickSiteConfig>;
-  if (typeof parsed.site !== "string" || parsed.site.length === 0) {
-    throw new Error(`${path} must define a non-empty "site" string.`);
-  }
-
-  return parsed.site;
 }
 
 function deployApiUrl(remote: string, site: string) {
@@ -154,12 +134,12 @@ async function uploadDeploy(options: { remote: string; site: string; tarball: Ar
 export const deployCommand: CommandDefinition = {
   name: "deploy",
   summary: "Deploy a static site",
-  description: "Package a directory and upload it to a Quick server.",
+  description: "Package a directory and upload it to a Quick server. A single positional argument is treated as the deploy directory; pass both [dir] and [site] to override the configured site.",
   flags: [
     {
       name: "remote",
       type: "string",
-      description: "Quick server URL. Overrides QUICK_REMOTE and config remote.",
+      description: "Quick server URL. Overrides repo, env, and global config remote.",
     },
     {
       name: "dry-run",
@@ -170,25 +150,28 @@ export const deployCommand: CommandDefinition = {
   arguments: [
     {
       name: "dir",
-      description: "Directory containing static site files",
-      required: true,
+      description: "Directory containing static site files. Defaults to deploy.input from .quick.json.",
+      required: false,
     },
     {
       name: "site",
-      description: "Site name to deploy to. Defaults to .quick.json in the deploy directory.",
+      description: "Site name to deploy to. Defaults to site from .quick.json.",
       required: false,
     },
   ],
-  examples: ["quick deploy .", "quick deploy . fun", "quick deploy ./site fun --remote https://quick.example.com"],
+  examples: ["quick deploy", "quick deploy .", "quick deploy . fun", "quick deploy ./site fun --remote https://quick.example.com"],
   execute: async ({ values, positionals }) => {
-    const [dir, siteArg, extra] = positionals;
-
-    if (dir === undefined) {
-      throw new Error("Missing arguments. Usage: quick deploy <dir> [site]");
-    }
+    const [dirArg, siteArg, extra] = positionals;
+    const cwdConfig = await findQuickRepoConfig();
 
     if (extra !== undefined) {
-      throw new Error("Too many arguments. Usage: quick deploy <dir> [site]");
+      throw new Error("Too many arguments. Usage: quick deploy [dir] [site]");
+    }
+
+    const configuredInput = cwdConfig?.config.deploy?.input;
+    const dir = dirArg ?? (configuredInput && cwdConfig ? resolveRepoPath(cwdConfig, configuredInput) : undefined);
+    if (dir === undefined) {
+      throw new Error("Missing deploy directory. Pass one explicitly or define deploy.input in .quick.json.");
     }
 
     if (siteArg !== undefined) {
@@ -196,19 +179,27 @@ export const deployCommand: CommandDefinition = {
     }
 
     const directory = await resolveDeployDirectory(dir);
-    const site = siteArg ?? await readDeploySiteConfig(directory);
-    if (site === undefined) {
-      throw new Error(`Missing site. Pass one explicitly or define "site" in ${join(directory, ".quick.json")}.`);
+    const repoConfig = dirArg === undefined ? cwdConfig : await findQuickRepoConfig(directory) ?? cwdConfig;
+    const site = siteArg ?? repoConfig?.config.site;
+    if (site === undefined || site.length === 0) {
+      if (repoConfig) {
+        throw new Error(`${repoConfig.path} must define a non-empty "site" string.`);
+      }
+      throw new Error("Missing site. Pass one explicitly or define site in .quick.json.");
     }
 
     if (siteArg === undefined) {
       validateSiteName(site);
     }
-    const remote = await resolveRemote({ remoteFlag: values.remote });
+    const remote = await resolveRemote({ remoteFlag: values.remote, repoRemote: repoConfig?.config.remote });
 
     console.log(`Remote: ${remote}`);
     console.log(`Site: ${site}`);
     console.log(`Directory: ${directory}`);
+    if (repoConfig) {
+      console.log(`Config: ${relative(process.cwd(), repoConfig.path) || ".quick.json"}`);
+      printRepoConfigHint("deploy");
+    }
     console.log("Packaging site...");
 
     const archive = await createTarball(directory);
@@ -225,7 +216,7 @@ export const deployCommand: CommandDefinition = {
         remote,
         site,
         tarball: archive.bytes,
-        confirmOverwrite: false,
+        confirmOverwrite: repoConfig?.config.deploy?.confirmOverwrite === true,
         auth,
       });
       auth = await refreshAuthFromResponse(remote, auth, result.response);

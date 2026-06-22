@@ -1,10 +1,37 @@
 <main class="shell">
   <section class="hero">
     <p class="eyebrow">Quick local platform</p>
-    <h1>Sites</h1>
+    <div class="hero-row">
+      <div>
+        <h1>Sites</h1>
+        <p class="intro">Upload a single <code>index.html</code> or a <code>.zip</code> containing an <code>index.html</code> at its root.</p>
+      </div>
+      <div id="auth-status" class="auth-status">Checking session…</div>
+    </div>
   </section>
 
-  <section id="sites-list" class="sites-list">Loading sites…</section>
+  <section class="panel" aria-labelledby="new-site-title">
+    <h2 id="new-site-title">Create or update a site</h2>
+    <form id="upload-form" class="upload-form">
+      <label>
+        Site name
+        <input id="site-name" name="site" autocomplete="off" pattern="[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?" placeholder="summer-poll" required />
+      </label>
+      <label>
+        Upload
+        <input id="site-file" name="file" type="file" accept=".html,.zip,text/html,application/zip" required />
+      </label>
+      <button class="primary" type="submit">Deploy site</button>
+    </form>
+    <p id="upload-message" class="message" role="status"></p>
+  </section>
+
+  <section aria-labelledby="sites-title">
+    <div class="section-heading">
+      <h2 id="sites-title">Deployed sites</h2>
+    </div>
+    <div id="sites-list" class="sites-list">Loading sites…</div>
+  </section>
 </main>
 
 <script is:inline type="module">
@@ -13,61 +40,132 @@
   const quick = createQuickClient();
 
   const elements = {
+    authStatus: document.querySelector("#auth-status"),
+    form: document.querySelector("#upload-form"),
+    message: document.querySelector("#upload-message"),
     sitesList: document.querySelector("#sites-list"),
   };
 
-  function formatDate(value) {
-    if (!value) return "Unknown deploy time";
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+  let authenticated = false;
+  let recentlyDeployedSite = "";
+
+  function formatFileSize(bytes) {
+    if (!Number.isFinite(bytes)) return "unknown size";
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
-  function siteDetail(site) {
-    const parts = [];
+  function formatDeployedAt(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
 
-    if (site.lastDeployedAt) {
-      parts.push(`deployed ${formatDate(site.lastDeployedAt)}`);
-    } else {
-      parts.push("runtime files present; no deploy metadata recorded");
-    }
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
 
-    if (site.lastDeployedBy?.email || site.lastDeployedBy?.name || site.lastDeployedBy?.id) {
-      parts.push(`by ${site.lastDeployedBy.email || site.lastDeployedBy.name || site.lastDeployedBy.id}`);
-    }
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+  }
 
-    if (typeof site.fileCount === "number") {
-      parts.push(`${site.fileCount} file${site.fileCount === 1 ? "" : "s"}`);
-    }
+  function setMessage(text, kind = "") {
+    elements.message.textContent = text;
+    elements.message.className = `message ${kind}`.trim();
+  }
 
-    if (!site.hasIndex) {
-      parts.push("missing index.html");
-    }
+  function setDeploySuccess(deployed) {
+    elements.message.className = "message success celebration";
 
-    return parts.join(" · ");
+    const title = document.createElement("strong");
+    title.textContent = "🎉 Site deployed!";
+
+    const detail = document.createElement("span");
+    detail.textContent = ` ${deployed.site} is live at `;
+
+    const link = document.createElement("a");
+    link.href = deployed.url;
+    link.textContent = deployed.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+
+    elements.message.replaceChildren(title, detail, link);
+  }
+
+  function sortSites(sites) {
+    return [...sites].sort((a, b) => {
+      const aTime = a.lastDeployedAt ? Date.parse(a.lastDeployedAt) : 0;
+      const bTime = b.lastDeployedAt ? Date.parse(b.lastDeployedAt) : 0;
+
+      if (bTime !== aTime) return bTime - aTime;
+      return a.site.localeCompare(b.site);
+    });
   }
 
   function renderSites(sites) {
-    if (sites.length === 0) {
-      elements.sitesList.textContent = "No deployed sites found. Deploy one with `quick deploy <dir> <site>`.";
+    const sortedSites = sortSites(sites);
+
+    if (sortedSites.length === 0) {
+      elements.sitesList.textContent = "No deployed sites found. Upload one above or deploy with the CLI.";
       return;
     }
 
     elements.sitesList.replaceChildren(
-      ...sites.map((site) => {
-        const item = document.createElement("a");
-        item.className = "site";
-        item.href = site.url;
-        if (!site.hasIndex) {
-          item.setAttribute("aria-disabled", "true");
-          item.tabIndex = -1;
+      ...sortedSites.map((site) => {
+        const hasIndex = site.hasIndex !== false;
+        const card = document.createElement(hasIndex ? "a" : "article");
+        card.className = site.site === recentlyDeployedSite ? "site-card just-deployed" : "site-card";
+        if (hasIndex) {
+          card.href = site.url;
+          card.setAttribute("aria-label", `Open ${site.site}`);
+        } else {
+          card.setAttribute("aria-label", `${site.site} is missing index.html`);
         }
 
-        const title = document.createElement("strong");
+        if (site.thumbnailUrl) {
+          const image = document.createElement("img");
+          image.src = site.thumbnailUrl;
+          image.alt = "";
+          image.loading = "lazy";
+          card.append(image);
+        } else {
+          const placeholder = document.createElement("div");
+          placeholder.className = "site-placeholder";
+          placeholder.setAttribute("aria-hidden", "true");
+          placeholder.textContent = site.site.slice(0, 2).toUpperCase();
+          card.append(placeholder);
+        }
+
+        const overlay = document.createElement("div");
+        overlay.className = "site-card-overlay";
+
+        const title = document.createElement("h3");
+        title.className = "site-title";
         title.textContent = site.site;
-        const detail = document.createElement("span");
-        detail.textContent = siteDetail(site);
-        item.append(title, detail);
-        return item;
+
+        const meta = document.createElement("div");
+        meta.className = "site-meta";
+
+        if (site.lastDeployedAt) {
+          const deployedAt = document.createElement("span");
+          deployedAt.textContent = formatDeployedAt(site.lastDeployedAt);
+          meta.append(deployedAt);
+        }
+
+        if (site.lastDeployedBy?.email) {
+          const deployedBy = document.createElement("span");
+          deployedBy.textContent = site.lastDeployedBy.email;
+          meta.append(deployedBy);
+        }
+
+        if (!hasIndex) {
+          const missingIndex = document.createElement("span");
+          missingIndex.textContent = "Missing index.html";
+          meta.append(missingIndex);
+        }
+
+        overlay.append(title, meta);
+        card.append(overlay);
+        return card;
       }),
     );
   }
@@ -82,6 +180,90 @@
     }
   }
 
+  async function refreshSession() {
+    const session = await quick.auth.session();
+    authenticated = session.authenticated;
+
+    if (!session.authenticated) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Log in to deploy";
+      button.addEventListener("click", async () => {
+        const login = await quick.auth.login({ returnTo: location.href });
+        location.href = login.authorizationUrl;
+      });
+      elements.authStatus.replaceChildren(button);
+      elements.form.querySelector("button[type='submit']").disabled = true;
+      setMessage("Log in before uploading sites.");
+      return;
+    }
+
+    elements.authStatus.textContent = session.user.email || session.user.name || session.user.id;
+    elements.form.querySelector("button[type='submit']").disabled = false;
+  }
+
+  async function uploadSite(site, file, overwrite = false) {
+    const body = new FormData();
+    body.set("file", file);
+
+    const headers = new Headers();
+    if (overwrite) headers.set("X-Quick-Confirm-Overwrite", site);
+
+    const response = await fetch(`/api/sites/${encodeURIComponent(site)}/upload`, {
+      method: "POST",
+      headers,
+      body,
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (response.status === 409 && !overwrite) {
+      if (confirm(`A site named ${site} already exists. Replace it?`)) {
+        return uploadSite(site, file, true);
+      }
+      throw new Error("Upload cancelled");
+    }
+
+    if (!response.ok) {
+      if (response.status === 413) {
+        const selectedSize = formatFileSize(file.size);
+        const limit = typeof payload.maxUploadBytes === "number" ? ` Quick allows uploads up to ${formatFileSize(payload.maxUploadBytes)}.` : "";
+        throw new Error(`The server or reverse proxy rejected this ${selectedSize} upload.${limit} If this file is smaller than Quick's limit, the running proxy/server likely still has a lower request-size limit and needs its config reloaded.`);
+      }
+
+      throw new Error(payload.error || `Upload failed with ${response.status}`);
+    }
+
+    return payload;
+  }
+
+  elements.form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(elements.form);
+    const site = String(form.get("site") || "").trim();
+    const file = form.get("file");
+
+    if (!(file instanceof File) || !file.name) {
+      setMessage("Choose an index.html or .zip file.", "error");
+      return;
+    }
+
+    elements.form.querySelector("button[type='submit']").disabled = true;
+    setMessage("Uploading…");
+
+    try {
+      const deployed = await uploadSite(site, file);
+      recentlyDeployedSite = deployed.site;
+      setDeploySuccess(deployed);
+      elements.form.reset();
+      await refreshSites();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error), "error");
+    } finally {
+      elements.form.querySelector("button[type='submit']").disabled = !authenticated;
+    }
+  });
+
+  await refreshSession();
   await refreshSites();
 </script>
 
@@ -92,8 +274,13 @@
     padding: 5rem 0;
   }
 
-  .hero {
-    margin-bottom: 3rem;
+  .hero { margin-bottom: 3rem; }
+
+  .hero-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 2rem;
   }
 
   .eyebrow {
@@ -113,53 +300,199 @@
     line-height: 0.9;
   }
 
+  h2 { margin: 0; font-size: 1.35rem; }
+  code { border-radius: 0.35rem; padding: 0.1rem 0.3rem; background: var(--code-bg); }
+
+  .intro {
+    max-width: 42rem;
+    margin: 1rem 0 0;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .auth-status {
+    min-width: max-content;
+    color: var(--muted);
+  }
+
+  .panel {
+    margin-bottom: 3rem;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface);
+  }
+
+  .upload-form {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1fr) minmax(14rem, 1.4fr) auto;
+    gap: 1rem;
+    align-items: end;
+    margin-top: 1rem;
+  }
+
+  label {
+    display: grid;
+    gap: 0.4rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+    padding: 0.72rem 0.8rem;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+  }
+
+  .primary {
+    border-radius: 0.6rem;
+    padding: 0.78rem 1rem;
+    background: var(--link);
+    color: white;
+    font-weight: 700;
+  }
+
+  .primary:hover { text-decoration: none; filter: brightness(1.05); }
+
+  .message { min-height: 1.5rem; margin: 1rem 0 0; color: var(--muted); }
+  .message.success { color: #047857; }
+  .message.error { color: var(--danger); }
+
+  .celebration {
+    display: block;
+    padding: 1rem;
+    border: 1px solid color-mix(in srgb, #10b981 45%, var(--border));
+    border-radius: 0.8rem;
+    background: linear-gradient(135deg, rgb(16 185 129 / 0.14), rgb(59 130 246 / 0.10));
+    box-shadow: 0 14px 32px rgb(16 185 129 / 0.10);
+  }
+
+  .celebration strong {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--text);
+    font-size: 1.15rem;
+  }
+
+  .section-heading {
+    margin-bottom: 1rem;
+  }
+
+
   .sites-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
     gap: 2rem;
   }
 
-  :global(.site) {
+  :global(.site-card) {
+    position: relative;
     display: block;
-    min-height: 9rem;
-    padding: 1.25rem 0;
-    border-top: 1px solid var(--border);
-    color: inherit;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface);
+    color: white;
+    text-decoration: none;
+    box-shadow: 0 18px 42px rgb(15 23 42 / 0.08);
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  }
+
+  :global(.site-card:hover) {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--link) 45%, var(--border));
+    box-shadow: 0 22px 52px rgb(15 23 42 / 0.14);
     text-decoration: none;
   }
 
-  :global(.site:hover strong) {
-    text-decoration: underline;
+  :global(.site-card.just-deployed) {
+    border-color: color-mix(in srgb, #10b981 65%, var(--border));
+    box-shadow: 0 18px 42px rgb(16 185 129 / 0.16);
   }
 
-  :global(.site strong) {
+  :global(.site-card img),
+  :global(.site-placeholder) {
     display: block;
-    margin-bottom: 0.75rem;
-    font-size: 1.4rem;
-    font-weight: 650;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: filter 160ms ease, transform 220ms ease;
   }
 
-  :global(.site span) {
-    display: block;
-    color: var(--muted);
-    font-size: 0.92rem;
-    line-height: 1.5;
+  :global(.site-card:hover img),
+  :global(.site-card:hover .site-placeholder),
+  :global(.site-card:focus-visible img),
+  :global(.site-card:focus-visible .site-placeholder) {
+    filter: brightness(0.62);
+    transform: scale(1.025);
   }
 
-  :global(.site[aria-disabled="true"]) {
-    opacity: 0.55;
+  :global(.site-placeholder) {
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(circle at 22% 18%, rgb(255 255 255 / 0.26), transparent 24%),
+      linear-gradient(135deg, color-mix(in srgb, var(--link) 72%, #111827), #111827 68%);
+    color: rgb(255 255 255 / 0.42);
+    font-size: clamp(3rem, 8vw, 5.5rem);
+    font-weight: 800;
+    letter-spacing: -0.08em;
+  }
+
+  :global(.site-card-overlay) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 1rem;
+    background: linear-gradient(180deg, rgb(0 0 0 / 0.34), transparent 42%, rgb(0 0 0 / 0.68));
     pointer-events: none;
   }
 
-  @media (max-width: 700px) {
-    .shell {
-      width: min(100% - 2rem, 76rem);
-      padding: 3rem 0;
-    }
+  :global(.site-title) {
+    margin: 0;
+    color: white;
+    font-size: clamp(1.2rem, 2.6vw, 1.65rem);
+    font-weight: 750;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    text-shadow:
+      -1px -1px 0 #000,
+      1px -1px 0 #000,
+      -1px 1px 0 #000,
+      1px 1px 0 #000,
+      0 3px 12px rgb(0 0 0 / 0.8);
+  }
 
-    .sites-list {
-      grid-template-columns: 1fr;
-      gap: 1.25rem;
-    }
+  :global(.site-meta) {
+    display: grid;
+    gap: 0.25rem;
+    opacity: 0;
+    transform: translateY(0.35rem);
+    color: white;
+    font-size: 0.86rem;
+    line-height: 1.35;
+    text-shadow: 0 2px 8px rgb(0 0 0 / 0.9);
+    transition: opacity 160ms ease, transform 160ms ease;
+  }
+
+  :global(.site-card:hover .site-meta),
+  :global(.site-card:focus-visible .site-meta) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 800px) {
+    .shell { width: min(100% - 2rem, 76rem); padding: 3rem 0; }
+    .hero-row, .section-heading { display: grid; }
+    .upload-form { grid-template-columns: 1fr; }
+    .sites-list { grid-template-columns: 1fr; gap: 1.25rem; }
+    .auth-status { min-width: 0; }
   }
 </style>

@@ -13,12 +13,16 @@ Build browser-only apps. No custom backend, server process, cron, migrations, se
 
 - Start simple: `index.html`, `app.js`, `style.css`.
 - Deploy root must contain `index.html`.
-- Site metadata in `.quick.json`:
+- Site metadata in `.quick.json`. `quick init` creates only `$schema` and `site` by default:
 
 ```json
-{ "site": "my-site" }
+{
+  "$schema": "{{ QUICK_ORIGIN }}/api/schemas/quick.schema.json",
+  "site": "my-site"
+}
 ```
 
+- Add explicit repo defaults only when useful, e.g. `remote`, `deploy.input`, `deploy.confirmOverwrite`, and `thumbnail.capture` settings. The JSON schema is available at `{{ QUICK_ORIGIN }}/api/schemas/quick.schema.json`.
 - Use `quick init` to create/update `.quick.json` and install/update this skill.
 
 ## SDK
@@ -45,9 +49,10 @@ Use DB for durable state. Use `collection.subscribe(...)` for DB-driven UI updat
 - `quick auth login`
 - `quick auth status`
 - `quick init` or `quick init <path>`
-- `quick deploy .` (uses `.quick.json`) or `quick deploy . <site>`
+- `quick deploy` (uses `deploy.input` + `site` from `.quick.json`), `quick deploy .`, or `quick deploy . <site>`
+- `quick thumbnail capture` (uses `site` and thumbnail defaults from `.quick.json`) or `quick thumbnail capture <site>`
 
-Deploy overwrite may require typing the site name.
+Deploy overwrite may require typing the site name unless `deploy.confirmOverwrite` is explicitly set for this repo.
 
 ## Examples / docs
 

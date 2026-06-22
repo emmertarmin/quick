@@ -44,6 +44,7 @@ export type QuickSite = {
   lastDeployedAt?: string;
   lastDeployedBy?: QuickUser;
   fileCount?: number;
+  thumbnailUrl?: string;
 };
 
 export type QuickSitesResponse = {
