@@ -1,11 +1,12 @@
 import { mkdir, mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import type { Context } from "hono";
-import type { OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { unzipSync } from "fflate";
 import { sqlite, sites } from "@quick/db";
 import type { QuickSite } from "@quick/shared";
 import { filesRoot, maxUploadBytes, quickDomain, quickScheme, sitesRoot } from "../config";
+import { errorResponseSchema, quickSiteSchema, quickSitesResponseSchema } from "../schemas";
 import { readAuthSession } from "./auth";
 
 const siteNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -481,12 +482,77 @@ async function storeThumbnail(site: string, contentType: string, bytes: ArrayBuf
   return { thumbnailUrl: thumbnailUrl(site) };
 }
 
+const apiErrorResponseSchema = errorResponseSchema.catchall(z.unknown()).openapi("SiteErrorResponse");
+const apiQuickSiteSchema = quickSiteSchema.extend({ exists: z.boolean(), thumbnailUrl: z.string().optional() }).partial({ url: true, hasIndex: true }).openapi("SiteQuickSite");
+const apiQuickSitesResponseSchema = quickSitesResponseSchema.openapi("SiteQuickSitesResponse");
+const apiSiteParamsSchema = z.object({
+  site: z.string().openapi({ description: "Quick site name.", example: "demo" }),
+}).openapi("SiteParams");
+const apiMissingSiteSchema = z.object({
+  site: z.string(),
+  exists: z.boolean(),
+  url: z.string(),
+  hasIndex: z.boolean(),
+}).openapi("MissingQuickSite");
+const apiSiteLookupResponseSchema = z.union([apiQuickSiteSchema, apiMissingSiteSchema]).openapi("SiteLookupResponse");
+const apiPurgeResponseSchema = z.object({}).catchall(z.unknown()).openapi("SitePurgeResponse");
+
+const errorJson = (description: string) => ({
+  content: {
+    "application/json": {
+      schema: apiErrorResponseSchema,
+    },
+  },
+  description,
+});
+
+const siteJson = (description: string) => ({
+  content: {
+    "application/json": {
+      schema: apiQuickSiteSchema,
+    },
+  },
+  description,
+});
+
 export function registerSiteRoutes(app: OpenAPIHono) {
-  app.get("/sites", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/sites",
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: apiQuickSitesResponseSchema,
+            },
+          },
+          description: "Known Quick sites.",
+        },
+      },
+    }),
+    async (c) => {
     return c.json({ sites: await listSites() }, 200);
   });
 
-  app.get("/sites/:site", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/sites/{site}",
+      request: { params: apiSiteParamsSchema },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: apiSiteLookupResponseSchema,
+            },
+          },
+          description: "Site lookup result.",
+        },
+        400: errorJson("Invalid site name."),
+      },
+    }),
+    async (c) => {
     const site = c.req.param("site");
 
     if (!validateSiteName(site)) {
@@ -503,7 +569,25 @@ export function registerSiteRoutes(app: OpenAPIHono) {
     return c.json({ ...metadata, site, exists: true, url: siteUrl(site), hasIndex, ...await siteThumbnailFields(site) }, 200);
   });
 
-  app.get("/sites/:site/thumbnail", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/sites/{site}/thumbnail",
+      request: { params: apiSiteParamsSchema },
+      responses: {
+        200: {
+          content: {
+            "image/webp": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+            "image/png": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+            "image/jpeg": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+          },
+          description: "Site thumbnail image.",
+        },
+        400: errorJson("Invalid site name."),
+        404: errorJson("Thumbnail not found."),
+      },
+    }),
+    async (c) => {
     const site = c.req.param("site");
 
     if (!validateSiteName(site)) {
@@ -523,7 +607,29 @@ export function registerSiteRoutes(app: OpenAPIHono) {
     });
   });
 
-  app.put("/sites/:site/thumbnail", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "put",
+      path: "/sites/{site}/thumbnail",
+      request: {
+        params: apiSiteParamsSchema,
+        body: {
+          content: {
+            "image/webp": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+            "image/png": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+            "image/jpeg": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: siteJson("Updated site thumbnail metadata."),
+        400: errorJson("Invalid site name, content type, or thumbnail body."),
+        401: errorJson("Authentication required."),
+        404: errorJson("Site does not exist."),
+      },
+    }),
+    async (c) => {
     const site = c.req.param("site");
 
     if (!validateSiteName(site)) {
@@ -552,7 +658,23 @@ export function registerSiteRoutes(app: OpenAPIHono) {
     }
   });
 
-  app.delete("/sites/:site", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "delete",
+      path: "/sites/{site}",
+      request: { params: apiSiteParamsSchema },
+      responses: {
+        200: {
+          content: { "application/json": { schema: apiPurgeResponseSchema } },
+          description: "Site purge result.",
+        },
+        400: errorJson("Invalid site name."),
+        401: errorJson("Authentication required."),
+        404: errorJson("Site does not exist."),
+        500: errorJson("Purge failed."),
+      },
+    }),
+    async (c) => {
     const site = c.req.param("site");
 
     if (!validateSiteName(site)) {
@@ -579,7 +701,34 @@ export function registerSiteRoutes(app: OpenAPIHono) {
     }
   });
 
-  app.post("/sites/:site/upload", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/sites/{site}/upload",
+      request: {
+        params: apiSiteParamsSchema,
+        headers: z.object({
+          "X-Quick-Confirm-Overwrite": z.string().optional().openapi({ description: "Set to the site name to confirm overwriting an existing site." }),
+        }),
+        body: {
+          content: {
+            "multipart/form-data": {
+              schema: z.object({ file: z.any().openapi({ type: "string", format: "binary" }) }).openapi("SiteUploadRequest"),
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: siteJson("Existing site replaced from browser upload."),
+        201: siteJson("New site created from browser upload."),
+        400: errorJson("Invalid site name or upload body."),
+        401: errorJson("Authentication required."),
+        409: errorJson("Site exists and overwrite was not confirmed."),
+        413: errorJson("Upload exceeds size limit."),
+      },
+    }),
+    async (c) => {
     const site = c.req.param("site");
 
     if (!validateSiteName(site)) {
@@ -628,7 +777,34 @@ export function registerSiteRoutes(app: OpenAPIHono) {
     }
   });
 
-  app.put("/sites/:site/deploy", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "put",
+      path: "/sites/{site}/deploy",
+      request: {
+        params: apiSiteParamsSchema,
+        headers: z.object({
+          "X-Quick-Confirm-Overwrite": z.string().optional().openapi({ description: "Set to the site name to confirm overwriting an existing site." }),
+        }),
+        body: {
+          content: {
+            "application/tar+gzip": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+            "application/gzip": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+            "application/octet-stream": { schema: z.string().openapi({ type: "string", format: "binary" }) },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: siteJson("Existing site deployed."),
+        201: siteJson("New site deployed."),
+        400: errorJson("Invalid site name or deploy archive."),
+        401: errorJson("Authentication required."),
+        409: errorJson("Site exists and overwrite was not confirmed."),
+        415: errorJson("Unsupported upload content type."),
+      },
+    }),
+    async (c) => {
     const site = c.req.param("site");
 
     if (!validateSiteName(site)) {

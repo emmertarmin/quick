@@ -40,7 +40,9 @@ For the full product story and API overview, start with [[docs/index|the Quick d
 - [[docs/examples/todo|Todo example]]
 - [[docs/examples/chat|Realtime chat example]]
 - [[docs/examples/gallery|Gallery and uploads example]]
+- [[docs/examples/realtime|Realtime presence example]]
 - [[docs/examples/ai-chat|AI chat example]]
+- [[docs/examples/agent-demo|Agent demo example]]
 
 ## Current shape
 

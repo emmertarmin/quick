@@ -18,7 +18,7 @@ Quick examples are not templates for large frameworks. They are little pressure 
 - [Todo](./todo/) shows basic database handling with `quick.db.collection(...)`.
 - [Chat](./chat/) adds identity and `collection.subscribe(...)` for live updates over SSE.
 - [Gallery](./gallery/) demonstrates `quick.files` for uploads, file metadata, public URLs, and deletion.
-- Realtime demonstrates `quick.realtime.presence(...)` for live presence and viewport-relative cursors.
+- [Realtime](./realtime/) demonstrates `quick.realtime.presence(...)` for live presence and viewport-relative cursors.
 - [AI Chat](./ai-chat/) demonstrates ephemeral, authenticated `quick.ai.chat(...)` calls through the server-side AI gateway.
 - [Agent Demo](./agent-demo/) demonstrates `quick.ai.agent(...)` calling whitelisted Quick-native tools for app context and current user summaries.
 

@@ -85,7 +85,6 @@ async function readJsonObject(request: { json(): Promise<unknown> }) {
 
 const collectionPath = "/db/collections/{collection}/documents";
 const documentPath = "/db/collections/{collection}/documents/{id}";
-const subscribePath = "/db/collections/:collection/subscribe";
 
 type CollectionRealtimeEvent =
   | { type: "create"; document: QuickDocument }
@@ -225,7 +224,28 @@ async function readDocumentMutation(c: Context): Promise<DocumentMutation> {
 }
 
 export function registerCollectionRoutes(app: OpenAPIHono) {
-  app.get(subscribePath, collectionSubscriptionResponse);
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/db/collections/{collection}/subscribe",
+      request: {
+        headers: apiSiteHeaderSchema,
+        params: apiCollectionParamsSchema,
+      },
+      responses: {
+        200: {
+          content: {
+            "text/event-stream": {
+              schema: z.string().openapi({ description: "Server-sent collection mutation events." }),
+            },
+          },
+          description: "Collection change subscription stream.",
+        },
+        400: errorJson("Missing or invalid request data."),
+      },
+    }),
+    collectionSubscriptionResponse,
+  );
 
   app.openapi(
     createRoute({

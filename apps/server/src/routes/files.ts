@@ -1,10 +1,11 @@
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import type { Context } from "hono";
-import type { OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { collections } from "@quick/db";
 import type { JsonBlob, QuickDocument } from "@quick/shared";
 import { filesRoot, maxUploadBytes } from "../config";
+import { errorResponseSchema, quickFileSchema, siteHeaderSchema } from "../schemas";
 
 const filesCollection = "_quick_files";
 const siteNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -77,8 +78,53 @@ async function uploadedFile(c: Context) {
   return undefined;
 }
 
+const apiErrorResponseSchema = errorResponseSchema.openapi("FileErrorResponse");
+const apiQuickFileSchema = quickFileSchema.openapi("QuickFile");
+const apiSiteHeaderSchema = siteHeaderSchema.openapi("FileSiteHeader", {
+  description: "Site name, set by the trusted Quick edge proxy from the request host.",
+  example: { "X-Quick-Site": "demo" },
+});
+const apiFileParamsSchema = z.object({
+  id: z.string().openapi({ description: "File id.", example: "00000000-0000-0000-0000-000000000000" }),
+}).openapi("FileParams");
+
+const errorJson = (description: string) => ({
+  content: {
+    "application/json": {
+      schema: apiErrorResponseSchema,
+    },
+  },
+  description,
+});
+
+const fileJson = (description: string) => ({
+  content: {
+    "application/json": {
+      schema: apiQuickFileSchema,
+    },
+  },
+  description,
+});
+
 export function registerFileRoutes(app: OpenAPIHono) {
-  app.get("/files", (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/files",
+      request: { headers: apiSiteHeaderSchema },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: z.array(apiQuickFileSchema),
+            },
+          },
+          description: "Files uploaded for the current site.",
+        },
+        400: errorJson("Missing or invalid site header."),
+      },
+    }),
+    (c) => {
     const site = siteFromHeader(c);
 
     if (!site) {
@@ -89,7 +135,29 @@ export function registerFileRoutes(app: OpenAPIHono) {
     return c.json(files, 200);
   });
 
-  app.post("/files", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/files",
+      request: {
+        headers: apiSiteHeaderSchema,
+        body: {
+          content: {
+            "multipart/form-data": {
+              schema: z.object({ file: z.any().openapi({ type: "string", format: "binary" }) }).openapi("FileUploadRequest"),
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        201: fileJson("Uploaded file metadata."),
+        400: errorJson("Missing or invalid request data."),
+        409: errorJson("File metadata conflict."),
+        413: errorJson("File exceeds upload limit."),
+      },
+    }),
+    async (c) => {
     const site = siteFromHeader(c);
 
     if (!site) {
@@ -135,7 +203,28 @@ export function registerFileRoutes(app: OpenAPIHono) {
     }
   });
 
-  app.get("/files/:id/content", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/files/{id}/content",
+      request: {
+        headers: apiSiteHeaderSchema,
+        params: apiFileParamsSchema,
+      },
+      responses: {
+        200: {
+          content: {
+            "application/octet-stream": {
+              schema: z.string().openapi({ type: "string", format: "binary" }),
+            },
+          },
+          description: "Raw uploaded file content.",
+        },
+        400: errorJson("Missing or invalid request data."),
+        404: errorJson("File metadata or content not found."),
+      },
+    }),
+    async (c) => {
     const site = siteFromHeader(c);
     const id = c.req.param("id");
 
@@ -171,7 +260,22 @@ export function registerFileRoutes(app: OpenAPIHono) {
     });
   });
 
-  app.delete("/files/:id", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "delete",
+      path: "/files/{id}",
+      request: {
+        headers: apiSiteHeaderSchema,
+        params: apiFileParamsSchema,
+      },
+      responses: {
+        200: fileJson("Deleted file metadata."),
+        400: errorJson("Missing or invalid request data."),
+        404: errorJson("File metadata or content not found."),
+        500: errorJson("File deletion failed."),
+      },
+    }),
+    async (c) => {
     const site = siteFromHeader(c);
     const id = c.req.param("id");
 

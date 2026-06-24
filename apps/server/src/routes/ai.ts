@@ -1,10 +1,11 @@
 import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { createModels, type AssistantMessage, type Context as PiContext, type Message as PiMessage, type Usage } from "@earendil-works/pi-ai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
-import type { OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { QuickAiAgentRequest, QuickAiAgentResponse, QuickAiAgentToolCall, QuickAiAgentTranscriptBlock, QuickAiAgentTranscriptMessage, QuickAiChatMessage, QuickAiChatRequest, QuickAiChatResponse, QuickAiToolsResponse } from "@quick/shared";
 import { quickChatEnabled, quickChatModel, quickChatProvider } from "../config";
 import { createQuickAiTools, isQuickAiToolName, listQuickAiTools } from "../ai-tools";
+import { errorResponseSchema, quickAiAgentRequestSchema, quickAiAgentResponseSchema, quickAiChatRequestSchema, quickAiChatResponseSchema, quickAiToolsResponseSchema } from "../schemas";
 import { readAuthSession } from "./auth";
 
 function aiError(message: string) {
@@ -150,6 +151,19 @@ function normalizedUsage(usage: Usage | undefined): QuickAiChatResponse["usage"]
   };
 }
 
+function formatDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function agentSystemPrompt(clientInstructions: string | undefined) {
+  const serverInstructions = `Current date: ${formatDate(new Date())}.`;
+  return [serverInstructions, clientInstructions?.trim()].filter(Boolean).join("\n\n");
+}
+
 function isAssistantMessage(message: AgentMessage): message is AssistantMessage {
   return !!message && typeof message === "object" && "role" in message && message.role === "assistant";
 }
@@ -233,8 +247,40 @@ function agentTranscript(messages: AgentMessage[]): QuickAiAgentTranscriptMessag
   });
 }
 
+const apiErrorResponseSchema = errorResponseSchema.openapi("AiErrorResponse");
+const apiQuickAiAgentRequestSchema = quickAiAgentRequestSchema.openapi("QuickAiAgentRequest");
+const apiQuickAiAgentResponseSchema = quickAiAgentResponseSchema.openapi("QuickAiAgentResponse");
+const apiQuickAiChatRequestSchema = quickAiChatRequestSchema.openapi("QuickAiChatRequest");
+const apiQuickAiChatResponseSchema = quickAiChatResponseSchema.openapi("QuickAiChatResponse");
+const apiQuickAiToolsResponseSchema = quickAiToolsResponseSchema.openapi("QuickAiToolsResponse");
+
+const errorJson = (description: string) => ({
+  content: {
+    "application/json": {
+      schema: apiErrorResponseSchema,
+    },
+  },
+  description,
+});
+
 export function registerAiRoutes(app: OpenAPIHono) {
-  app.get("/ai/tools", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/ai/tools",
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: apiQuickAiToolsResponseSchema,
+            },
+          },
+          description: "Whitelisted Quick AI agent tools available for this server.",
+        },
+        401: errorJson("Authentication required."),
+      },
+    }),
+    async (c) => {
     const session = await readAuthSession(c);
 
     if (!session) {
@@ -245,7 +291,36 @@ export function registerAiRoutes(app: OpenAPIHono) {
     return c.json(response, 200);
   });
 
-  app.post("/ai/agent", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/ai/agent",
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: apiQuickAiAgentRequestSchema,
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: apiQuickAiAgentResponseSchema,
+            },
+          },
+          description: "Single Quick AI agent turn result.",
+        },
+        400: errorJson("Missing, invalid, or unsupported request data."),
+        401: errorJson("Authentication required."),
+        500: errorJson("AI provider or server configuration error."),
+        503: errorJson("Quick AI agent is disabled."),
+      },
+    }),
+    async (c) => {
     if (!quickChatEnabled) {
       return c.json(aiError("Quick AI agent is disabled"), 503);
     }
@@ -288,7 +363,7 @@ export function registerAiRoutes(app: OpenAPIHono) {
       const toolCalls: QuickAiAgentToolCall[] = [];
       const agent = new Agent({
         initialState: {
-          systemPrompt: request.instructions ?? "",
+          systemPrompt: agentSystemPrompt(request.instructions),
           model,
           thinkingLevel: "off",
           tools: createQuickAiTools({ c, user: session.user }, requestedTools),
@@ -334,7 +409,36 @@ export function registerAiRoutes(app: OpenAPIHono) {
     }
   });
 
-  app.post("/ai/chat", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/ai/chat",
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: apiQuickAiChatRequestSchema,
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: apiQuickAiChatResponseSchema,
+            },
+          },
+          description: "Normalized non-streaming AI chat completion.",
+        },
+        400: errorJson("Missing or invalid request data."),
+        401: errorJson("Authentication required."),
+        500: errorJson("AI provider or server configuration error."),
+        503: errorJson("Quick AI chat is disabled."),
+      },
+    }),
+    async (c) => {
     if (!quickChatEnabled) {
       return c.json(aiError("Quick AI chat is disabled"), 503);
     }

@@ -1,3 +1,4 @@
+import { aiCommand } from "../commands/ai.js";
 import { authCommand } from "../commands/auth.js";
 import { configCommand } from "../commands/config.js";
 import { deployCommand } from "../commands/deploy.js";
@@ -28,7 +29,7 @@ export const rootCommand: CommandDefinition = {
   name: "quick",
   summary: "Quick CLI",
   description: "Deploy and manage Quick static sites.",
-  subcommands: [authCommand, configCommand, deployCommand, initCommand, purgeCommand, statsCommand, thumbnailCommand, helpCommand, versionCommand],
+  subcommands: [aiCommand, authCommand, configCommand, deployCommand, initCommand, purgeCommand, statsCommand, thumbnailCommand, helpCommand, versionCommand],
 };
 
 export function getVisibleSubcommands(command: CommandDefinition): CommandDefinition[] {

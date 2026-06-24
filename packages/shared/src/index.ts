@@ -81,6 +81,7 @@ export type QuickAiAgentTool = {
   name: string;
   description: string;
   label: string;
+  parameters: JsonBlob;
 };
 
 export type QuickAiToolsResponse = {

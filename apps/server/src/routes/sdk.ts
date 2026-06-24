@@ -1,12 +1,35 @@
 import { resolve } from "node:path";
-import type { OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 
 function getBuiltSdkPath() {
   return resolve(import.meta.dir, "../../../../packages/sdk/dist/browser/quick.js");
 }
 
 export function registerSdkRoutes(app: OpenAPIHono) {
-  app.get("/quick.js", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/quick.js",
+      responses: {
+        200: {
+          content: {
+            "text/javascript": {
+              schema: z.string().openapi({ description: "Browser SDK JavaScript bundle." }),
+            },
+          },
+          description: "Quick browser SDK bundle.",
+        },
+        503: {
+          content: {
+            "text/plain": {
+              schema: z.string(),
+            },
+          },
+          description: "SDK bundle has not been built.",
+        },
+      },
+    }),
+    async (c) => {
     const file = Bun.file(getBuiltSdkPath());
 
     if (!(await file.exists())) {

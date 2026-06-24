@@ -16,6 +16,17 @@ export type QuickAnonymousSession = {
 
 export type QuickSessionResponse = QuickAuthenticatedSession | QuickAnonymousSession;
 
+export type QuickAiAgentTool = {
+  name: string;
+  description: string;
+  label: string;
+  parameters: Record<string, unknown>;
+};
+
+export type QuickAiToolsResponse = {
+  tools: QuickAiAgentTool[];
+};
+
 export type QuickSiteStats = {
   site: string;
   url: string;

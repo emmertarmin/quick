@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 
 const quickSkillPath = join(import.meta.dir, "..", "skills", "quick", "SKILL.md");
 
@@ -17,7 +17,22 @@ async function readQuickSkill(origin: string) {
 }
 
 export function registerSkillRoutes(app: OpenAPIHono) {
-  app.get("/skills/quick/SKILL.md", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/skills/quick/SKILL.md",
+      responses: {
+        200: {
+          content: {
+            "text/markdown": {
+              schema: z.string().openapi({ description: "Quick agent skill markdown." }),
+            },
+          },
+          description: "Quick agent skillfile with server-specific documentation links.",
+        },
+      },
+    }),
+    async (c) => {
     return c.text(await readQuickSkill(publicOrigin(c.req.raw)), 200, {
       "Content-Type": "text/markdown; charset=utf-8",
     });

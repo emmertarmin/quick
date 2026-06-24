@@ -1,8 +1,9 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join, relative, sep } from "node:path";
-import type { OpenAPIHono } from "@hono/zod-openapi";
+import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { sites, sqlite } from "@quick/db";
 import { filesRoot, quickDomain, quickScheme, sitesRoot } from "../config";
+import { errorResponseSchema } from "../schemas";
 
 const siteNamePattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 const textExtensions = new Set([".html", ".htm", ".css", ".js", ".mjs", ".ts", ".tsx", ".jsx", ".json", ".txt", ".md", ".svg", ".xml", ".csv", ".yml", ".yaml"]);
@@ -224,8 +225,36 @@ async function uploadedFileStats(site: string, top: number) {
   };
 }
 
+const apiSiteStatsParamsSchema = z.object({
+  site: z.string().openapi({ description: "Quick site name.", example: "demo" }),
+}).openapi("SiteStatsParams");
+const apiSiteStatsQuerySchema = z.object({
+  top: z.string().optional().openapi({ description: "Maximum number of top files/items to return, clamped to 1..100.", example: "10" }),
+}).openapi("SiteStatsQuery");
+const apiSiteStatsResponseSchema = z.object({}).catchall(z.unknown()).openapi("SiteStatsResponse");
+const apiErrorResponseSchema = errorResponseSchema.openapi("SiteStatsErrorResponse");
+
 export function registerSiteStatsRoutes(app: OpenAPIHono) {
-  app.get("/sites/:site/stats", async (c) => {
+  app.openapi(
+    createRoute({
+      method: "get",
+      path: "/sites/{site}/stats",
+      request: {
+        params: apiSiteStatsParamsSchema,
+        query: apiSiteStatsQuerySchema,
+      },
+      responses: {
+        200: {
+          content: { "application/json": { schema: apiSiteStatsResponseSchema } },
+          description: "Aggregate source, database, upload, API usage, and health stats for a site.",
+        },
+        400: {
+          content: { "application/json": { schema: apiErrorResponseSchema } },
+          description: "Invalid site name.",
+        },
+      },
+    }),
+    async (c) => {
     const site = c.req.param("site");
     if (!siteNamePattern.test(site)) return c.json({ error: "Invalid site name" }, 400);
 

@@ -134,7 +134,7 @@ The browser app only calls `/api/ai/chat`; it never sees the provider API key.
 
 ### AI agent
 
-`quick.ai.agent(...)` runs a single agent turn using the same server-side model configuration. It exposes only whitelisted Quick-native tools requested by name.
+`quick.ai.agent(...)` runs a single agent turn using the same server-side model configuration. Quick prepends a minimal server-side system prompt containing the current date (`YYYY-MM-DD`) to any client-provided `instructions`. The agent also receives server-side default tools, including `quick_datetime_get` for the current server-local date/time (`YYYY-MM-DD hh:mm:ss`); additional whitelisted Quick-native tools can be requested by name.
 
 ```js
 const tools = await quick.ai.tools();
@@ -149,7 +149,29 @@ console.log(res.output);
 console.log(res.toolCalls);
 ```
 
-`quick.ai.agent(...)` requires an authenticated Quick session and uses `/api/ai/agent`. `quick.ai.tools()` lists the current whitelisted tools from `/api/ai/tools`.
+`quick.ai.agent(...)` requires an authenticated Quick session and uses `/api/ai/agent`. `quick.ai.tools()` lists the current whitelisted tools from `/api/ai/tools`, including each tool's JSON-schema-like `parameters` schema:
+
+```js
+{
+  tools: [
+    {
+      name: "quick_collection_get",
+      label: "Get collection document",
+      description: "Read a single document by id from a Quick DB collection for the current app/site. Mirrors quick.db.collection(name).get(id).",
+      parameters: {
+        type: "object",
+        properties: {
+          collection: { type: "string", minLength: 1 },
+          id: { type: "string", minLength: 1 },
+        },
+        required: ["collection", "id"],
+      },
+    },
+  ],
+}
+```
+
+Requested tool names are additive: the server-side default tools are available even when `tools` is omitted. Built-in tools include current date/time, current user, current app context, site-scoped collection reads/writes/search, site-scoped uploaded file listing, current-site metadata, and cross-site discovery via `quick_sites_list`. `quick_collection_search` supports broad text search and a Mongo-inspired `filter` object with dot paths and operators such as `$eq`, `$in`, `$exists`, `$regex`, `$and`, and `$or`.
 
 ## Database collections
 

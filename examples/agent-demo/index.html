@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick AI Agent Demo</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="agent-app">
+      <header class="app-header">
+        <div>
+          <h1>Quick AI Agent Demo</h1>
+          <p>Runs <code>quick.ai.agent(...)</code> with all whitelisted tools enabled and renders the full transcript.</p>
+        </div>
+        <p id="user-status">Checking sign-in...</p>
+      </header>
+
+      <section class="tools-panel" aria-labelledby="tools-heading">
+        <div>
+          <h2 id="tools-heading">Tools enabled for this run</h2>
+          <p id="tools-status">Loading tools...</p>
+        </div>
+        <ul id="tools-list"></ul>
+      </section>
+
+      <section class="result-panel" aria-labelledby="result-heading">
+        <div class="result-header">
+          <div>
+            <h2 id="result-heading">Agent transcript</h2>
+            <p id="status">Sign in, then ask the prefilled tool-friendly question.</p>
+          </div>
+          <button id="clear-output" class="secondary" type="button">Clear output</button>
+        </div>
+        <ol id="transcript" aria-live="polite"></ol>
+      </section>
+
+      <form id="agent-form" class="composer" hidden>
+        <details open>
+          <summary>Instructions</summary>
+          <textarea id="instructions" name="instructions" rows="4">You are a debugging-friendly Quick agent demo. Use the available tools before answering when they are relevant. Be explicit about which tool information you used.</textarea>
+        </details>
+
+        <label for="agent-input">Question for the agent</label>
+        <textarea id="agent-input" name="input" rows="3" required>What is the current server date and time, who am I signed in as, and what Quick site/app context am I currently running in?</textarea>
+
+        <div class="actions">
+          <button type="submit">Run agent with tools</button>
+          <button id="reset-prompt" class="secondary" type="button">Reset prompt</button>
+        </div>
+      </form>
+    </main>
+
+    <script type="module">
+      import { createQuickClient } from "/quick.js";
+
+      const quick = createQuickClient();
+      const form = document.querySelector("#agent-form");
+      const userStatus = document.querySelector("#user-status");
+      const toolsStatus = document.querySelector("#tools-status");
+      const toolsList = document.querySelector("#tools-list");
+      const status = document.querySelector("#status");
+      const transcript = document.querySelector("#transcript");
+      const instructionsInput = document.querySelector("#instructions");
+      const agentInput = document.querySelector("#agent-input");
+      const submitButton = form.querySelector("button[type='submit']");
+      const clearButton = document.querySelector("#clear-output");
+      const resetButton = document.querySelector("#reset-prompt");
+
+      const defaultPrompt = agentInput.value;
+      let enabledTools = [];
+
+      function pretty(value) {
+        return JSON.stringify(value, null, 2);
+      }
+
+      function appendDebug(parent, title, value, open = false) {
+        const details = document.createElement("details");
+        details.className = "debug";
+        details.open = open;
+
+        const summary = document.createElement("summary");
+        summary.textContent = title;
+
+        const pre = document.createElement("pre");
+        pre.textContent = typeof value === "string" ? value : pretty(value);
+
+        details.append(summary, pre);
+        parent.append(details);
+      }
+
+      function blockElement(block) {
+        const item = document.createElement("article");
+        item.className = `block ${block?.type ?? "unknown"}`;
+
+        const title = document.createElement("h3");
+        title.textContent = `content block: ${block?.type ?? "unknown"}`;
+        item.append(title);
+
+        if (block?.type === "text") {
+          const p = document.createElement("p");
+          p.textContent = block.text;
+          item.append(p);
+        } else if (block?.type === "thinking") {
+          const p = document.createElement("p");
+          p.textContent = block.thinking;
+          item.append(p);
+        } else if (block?.type === "toolCall") {
+          const dl = document.createElement("dl");
+          dl.innerHTML = `<dt>Tool</dt><dd></dd><dt>Call ID</dt><dd></dd>`;
+          dl.children[1].textContent = block.name;
+          dl.children[3].textContent = block.id;
+          item.append(dl);
+          appendDebug(item, "tool arguments", block.arguments, true);
+        } else if (block?.type === "image") {
+          const p = document.createElement("p");
+          p.textContent = `Image block (${block.mimeType})`;
+          item.append(p);
+        }
+
+        appendDebug(item, "raw content block", block);
+        return item;
+      }
+
+      function messageElement(message, index) {
+        const item = document.createElement("li");
+        item.className = `message ${message.role}`;
+
+        const header = document.createElement("div");
+        header.className = "message-header";
+
+        const title = document.createElement("strong");
+        title.textContent = `${index + 1}. ${message.role}`;
+        header.append(title);
+
+        const badges = document.createElement("span");
+        badges.className = "badges";
+        if (message.stopReason) badges.append(badge(`stop: ${message.stopReason}`));
+        if (message.isError !== undefined) badges.append(badge(message.isError ? "tool error" : "tool ok"));
+        if (message.toolName) badges.append(badge(message.toolName));
+        header.append(badges);
+        item.append(header);
+
+        if (message.role === "toolResult") {
+          const meta = document.createElement("dl");
+          meta.innerHTML = `<dt>Tool</dt><dd></dd><dt>Call ID</dt><dd></dd>`;
+          meta.children[1].textContent = message.toolName;
+          meta.children[3].textContent = message.toolCallId;
+          item.append(meta);
+
+          if (message.details !== undefined) {
+            appendDebug(item, "tool result details", message.details, true);
+          }
+        }
+
+        const blocks = document.createElement("div");
+        blocks.className = "blocks";
+        blocks.append(...(message.content ?? []).map(blockElement));
+        item.append(blocks);
+
+        appendDebug(item, "raw transcript message", message);
+        return item;
+      }
+
+      function badge(text) {
+        const span = document.createElement("span");
+        span.className = "badge";
+        span.textContent = text;
+        return span;
+      }
+
+      function renderTools(tools) {
+        toolsList.replaceChildren(...tools.map((tool) => {
+          const item = document.createElement("li");
+          const name = document.createElement("strong");
+          name.textContent = tool.name;
+          const label = document.createElement("span");
+          label.textContent = tool.label;
+          const description = document.createElement("p");
+          description.textContent = tool.description;
+          item.append(name, label, description);
+          return item;
+        }));
+
+        toolsStatus.textContent = tools.length
+          ? `${tools.length} tool(s) will be passed to quick.ai.agent(...).`
+          : "No tools are currently whitelisted by this Quick server.";
+      }
+
+      function renderResponse(response) {
+        const items = (response.transcript ?? []).map(messageElement);
+        transcript.replaceChildren(...items);
+        transcript.scrollTop = transcript.scrollHeight;
+      }
+
+      function setRunning(running) {
+        submitButton.disabled = running;
+        clearButton.disabled = running;
+        resetButton.disabled = running;
+        transcript.classList.toggle("is-locked", running);
+      }
+
+      clearButton.addEventListener("click", () => {
+        transcript.replaceChildren();
+        status.textContent = "Output cleared. Run the agent again to generate a transcript.";
+      });
+
+      resetButton.addEventListener("click", () => {
+        agentInput.value = defaultPrompt;
+        agentInput.focus();
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const input = agentInput.value.trim();
+        const instructions = instructionsInput.value.trim();
+        if (!input) return;
+
+        setRunning(true);
+        status.textContent = "Running agent turn with tools enabled...";
+        transcript.replaceChildren();
+
+        try {
+          const response = await quick.ai.agent({
+            input,
+            instructions,
+            tools: enabledTools.map((tool) => tool.name),
+          });
+
+          renderResponse(response);
+          status.textContent = `Agent finished. Rendered ${(response.transcript ?? []).length} transcript message(s).`;
+        } catch (error) {
+          console.error(error);
+          status.textContent = error instanceof Error ? error.message : String(error);
+        } finally {
+          setRunning(false);
+          agentInput.focus();
+        }
+      });
+
+      async function main() {
+        const session = await quick.auth.session();
+
+        if (!session.authenticated) {
+          userStatus.textContent = "You are not signed in.";
+          status.textContent = "Quick AI agent requires an authenticated Quick session.";
+          const login = await quick.auth.login({ returnTo: location.href });
+          const link = document.createElement("a");
+          link.href = login.authorizationUrl;
+          link.textContent = "Sign in to try it";
+          status.append(" ", link);
+          return;
+        }
+
+        userStatus.textContent = `Signed in as ${session.user.email ?? session.user.id}`;
+        enabledTools = (await quick.ai.tools()).tools;
+        renderTools(enabledTools);
+        form.hidden = false;
+        status.textContent = enabledTools.length
+          ? "Ready. This question should naturally call the date-time, current-user, and app-context tools."
+          : "Ready, but only the server-side default tools may be available to the agent.";
+      }
+
+      await main();
+    </script>
+  </body>
+</html>
