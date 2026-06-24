@@ -75,9 +75,13 @@ Log out with:
 await quick.auth.logout();
 ```
 
-## AI chat
+## AI
 
-Use `quick.ai` for simple authenticated chat completions from a static app. The basic Shopify-style call accepts an array of messages:
+Use `quick.ai` for authenticated server-side AI calls from a static app.
+
+### AI chat
+
+`quick.ai.chat(...)` provides simple chat completions. The basic Shopify-style call accepts an array of messages:
 
 <div class="code-title">index.html</div>
 
@@ -126,7 +130,22 @@ QUICK_CHAT_MODEL=...
 OPENROUTER_API_KEY=...
 ```
 
-The browser app only calls `/api/ai/chat`; it never sees the provider API key. Current AI support is intentionally small: simple non-streaming chat only.
+The browser app only calls `/api/ai/chat`; it never sees the provider API key.
+
+### AI agent
+
+`quick.ai.agent(...)` runs a single no-tools agent turn using the same server-side model configuration. Phase 1 intentionally exposes no arbitrary tools.
+
+```js
+const res = await quick.ai.agent({
+  instructions: "Be concise.",
+  input: "Turn this feature idea into three milestones.",
+});
+
+console.log(res.output);
+```
+
+`quick.ai.agent(...)` requires an authenticated Quick session and uses `/api/ai/agent`.
 
 ## Database collections
 

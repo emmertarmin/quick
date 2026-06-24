@@ -1,7 +1,8 @@
+import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { createModels, type AssistantMessage, type Context as PiContext, type Message as PiMessage, type Usage } from "@earendil-works/pi-ai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import type { QuickAiChatMessage, QuickAiChatRequest, QuickAiChatResponse } from "@quick/shared";
+import type { QuickAiAgentRequest, QuickAiAgentResponse, QuickAiChatMessage, QuickAiChatRequest, QuickAiChatResponse } from "@quick/shared";
 import { quickChatEnabled, quickChatModel, quickChatProvider } from "../config";
 import { readAuthSession } from "./auth";
 
@@ -33,6 +34,27 @@ function parseChatRequest(value: unknown): QuickAiChatRequest | undefined {
   }
 
   return { messages };
+}
+
+function parseAgentRequest(value: unknown): QuickAiAgentRequest | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const request = value as { input?: unknown; instructions?: unknown };
+
+  if (typeof request.input !== "string" || !request.input.trim()) {
+    return undefined;
+  }
+
+  if (request.instructions !== undefined && typeof request.instructions !== "string") {
+    return undefined;
+  }
+
+  return {
+    input: request.input,
+    instructions: request.instructions,
+  };
 }
 
 let models: ReturnType<typeof createModels> | undefined;
@@ -122,7 +144,84 @@ function normalizedUsage(usage: Usage | undefined): QuickAiChatResponse["usage"]
   };
 }
 
+function isAssistantMessage(message: AgentMessage): message is AssistantMessage {
+  return !!message && typeof message === "object" && "role" in message && message.role === "assistant";
+}
+
+function latestAssistantMessage(messages: AgentMessage[]) {
+  return messages.findLast(isAssistantMessage);
+}
+
 export function registerAiRoutes(app: OpenAPIHono) {
+  app.post("/ai/agent", async (c) => {
+    if (!quickChatEnabled) {
+      return c.json(aiError("Quick AI agent is disabled"), 503);
+    }
+
+    if (!quickChatModel) {
+      return c.json(aiError("QUICK_CHAT_MODEL must be set"), 500);
+    }
+
+    if (quickChatProvider === "openrouter" && !process.env.OPENROUTER_API_KEY?.trim()) {
+      return c.json(aiError("OPENROUTER_API_KEY must be set for QUICK_CHAT_PROVIDER=openrouter"), 500);
+    }
+
+    const session = await readAuthSession(c);
+
+    if (!session) {
+      return c.json(aiError("Authentication required"), 401);
+    }
+
+    const request = parseAgentRequest(await c.req.json().catch(() => undefined));
+
+    if (!request) {
+      return c.json(aiError("Expected JSON body with non-empty input string and optional instructions string"), 400);
+    }
+
+    try {
+      const collection = chatModels();
+      const model = collection.getModel(quickChatProvider, quickChatModel);
+
+      if (!model) {
+        return c.json(aiError(`Unknown ${quickChatProvider} chat model: ${quickChatModel}`), 500);
+      }
+
+      const agent = new Agent({
+        initialState: {
+          systemPrompt: request.instructions ?? "",
+          model,
+          thinkingLevel: "off",
+          tools: [],
+        },
+        streamFn: (model, context, options) => collection.streamSimple(model, context, options),
+      });
+
+      await agent.prompt(request.input);
+
+      const message = latestAssistantMessage(agent.state.messages);
+
+      if (!message) {
+        throw new Error("Agent did not return an assistant message");
+      }
+
+      const output = textFromAssistantMessage(message);
+      const response: QuickAiAgentResponse = {
+        output,
+        message: {
+          role: "assistant",
+          content: output,
+        },
+        usage: normalizedUsage(message.usage),
+      };
+
+      return c.json(response, 200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[ai] agent failed", error);
+      return c.json(aiError(message), 500);
+    }
+  });
+
   app.post("/ai/chat", async (c) => {
     if (!quickChatEnabled) {
       return c.json(aiError("Quick AI chat is disabled"), 503);

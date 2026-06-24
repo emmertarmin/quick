@@ -1,5 +1,7 @@
 import type {
   JsonBlob,
+  QuickAiAgentRequest,
+  QuickAiAgentResponse,
   QuickAiChatMessage,
   QuickAiChatRequest,
   QuickAiChatResponse,
@@ -13,6 +15,8 @@ import type {
 
 export type {
   JsonBlob,
+  QuickAiAgentRequest,
+  QuickAiAgentResponse,
   QuickAiChatMessage,
   QuickAiChatRequest,
   QuickAiChatResponse,
@@ -59,6 +63,7 @@ export type QuickDatabase = {
 export type QuickAiChatInput = QuickAiChatMessage[] | QuickAiChatRequest;
 
 export type QuickAi = {
+  agent(request: QuickAiAgentRequest): Promise<QuickAiAgentResponse>;
   chat(messagesOrRequest: QuickAiChatInput): Promise<QuickAiChatResponse>;
 };
 
@@ -289,6 +294,13 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
   };
 
   const ai: QuickAi = {
+    agent(body) {
+      return request<QuickAiAgentResponse>("/ai/agent", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+
     chat(messagesOrRequest) {
       const body = Array.isArray(messagesOrRequest) ? { messages: messagesOrRequest } : messagesOrRequest;
 

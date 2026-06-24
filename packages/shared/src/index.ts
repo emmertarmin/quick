@@ -76,3 +76,14 @@ export type QuickAiChatResponse = {
   message: QuickAiChatMessage;
   usage?: QuickAiChatUsage;
 };
+
+export type QuickAiAgentRequest = {
+  input: string;
+  instructions?: string;
+};
+
+export type QuickAiAgentResponse = {
+  output: string;
+  message: QuickAiChatMessage;
+  usage?: QuickAiChatUsage;
+};
