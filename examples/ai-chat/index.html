@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Quick AI Chat Example</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="chat-app">
+      <header class="app-header">
+        <div>
+          <h1>Quick AI Chat</h1>
+          <p>Ephemeral in-memory chat. Refreshing clears the conversation.</p>
+        </div>
+        <p id="user-status">Checking sign-in...</p>
+      </header>
+
+      <section class="transcript-panel" aria-labelledby="conversation-heading">
+        <div class="transcript-header">
+          <h2 id="conversation-heading">Conversation</h2>
+          <p id="status">Sign in, then send a message.</p>
+        </div>
+        <ol id="conversation" aria-live="polite"></ol>
+      </section>
+
+      <form id="chat-form" class="composer">
+        <details>
+          <summary>System prompt</summary>
+          <textarea id="system-prompt" name="systemPrompt" rows="3">You are a pirate who explains everything with dramatic enthusiasm.</textarea>
+        </details>
+
+        <label class="visually-hidden" for="user-prompt">Your message</label>
+        <div class="prompt-row">
+          <textarea id="user-prompt" name="userPrompt" rows="2" placeholder="Message Quick AI..." required></textarea>
+          <button type="submit">Send</button>
+        </div>
+
+        <button id="clear-chat" class="secondary" type="button">Clear chat</button>
+      </form>
+    </main>
+
+    <script type="module">
+      import { createQuickClient } from "/quick.js";
+
+      const quick = createQuickClient();
+      const userStatus = document.querySelector("#user-status");
+      const form = document.querySelector("#chat-form");
+      const systemInput = document.querySelector("#system-prompt");
+      const userInput = document.querySelector("#user-prompt");
+      const status = document.querySelector("#status");
+      const conversation = document.querySelector("#conversation");
+      const submitButton = form.querySelector("button[type='submit']");
+      const clearButton = document.querySelector("#clear-chat");
+      const history = [];
+
+      function scrollConversationToBottom() {
+        conversation.scrollTop = conversation.scrollHeight;
+      }
+
+      function setGenerating(value) {
+        conversation.classList.toggle("is-locked", value);
+        submitButton.disabled = value;
+        clearButton.disabled = value;
+        scrollConversationToBottom();
+      }
+
+      function renderConversation() {
+        const items = history.map((message) => {
+          const item = document.createElement("li");
+          item.className = `message ${message.role}`;
+
+          const label = document.createElement("strong");
+          label.textContent = message.role === "user" ? "You" : "Assistant";
+
+          const body = document.createElement("p");
+          body.textContent = message.content;
+
+          item.append(label, body);
+          return item;
+        });
+
+        conversation.replaceChildren(...items);
+        scrollConversationToBottom();
+      }
+
+      clearButton.addEventListener("click", () => {
+        history.length = 0;
+        renderConversation();
+        status.textContent = "Chat cleared. Send a new message to start again.";
+        userInput.focus();
+      });
+
+      function insertNewline(textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        textarea.setRangeText("\n", start, end, "end");
+      }
+
+      userInput.addEventListener("keydown", (event) => {
+        if (event.isComposing) {
+          return;
+        }
+
+        if (event.ctrlKey && event.key.toLowerCase() === "j") {
+          event.preventDefault();
+          insertNewline(userInput);
+          return;
+        }
+
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+          form.requestSubmit();
+        }
+      });
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const systemPrompt = systemInput.value.trim();
+        const userPrompt = userInput.value.trim();
+        if (!userPrompt) return;
+
+        const userMessage = { role: "user", content: userPrompt };
+        history.push(userMessage);
+        userInput.value = "";
+        renderConversation();
+
+        const messages = systemPrompt ? [{ role: "system", content: systemPrompt }, ...history] : [...history];
+
+        setGenerating(true);
+        status.textContent = "Thinking...";
+
+        try {
+          const res = await quick.ai.chat(messages);
+          history.push(res.message);
+          renderConversation();
+          status.textContent = `${history.length} message(s) in memory.`;
+        } catch (error) {
+          console.error(error);
+          status.textContent = error instanceof Error ? error.message : String(error);
+          history.pop();
+          renderConversation();
+        } finally {
+          setGenerating(false);
+          userInput.focus();
+        }
+      });
+
+      async function main() {
+        const session = await quick.auth.session();
+
+        if (!session.authenticated) {
+          userStatus.textContent = "You are not signed in.";
+          form.hidden = true;
+          status.textContent = "Quick AI chat requires an authenticated Quick session.";
+          const login = await quick.auth.login({ returnTo: location.href });
+          const link = document.createElement("a");
+          link.href = login.authorizationUrl;
+          link.textContent = "Sign in to try it";
+          status.append(" ", link);
+          return;
+        }
+
+        userStatus.textContent = `Signed in as ${session.user.email ?? session.user.id}`;
+        form.hidden = false;
+      }
+
+      await main();
+    </script>
+  </body>
+</html>

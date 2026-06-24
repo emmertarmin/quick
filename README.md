@@ -2,7 +2,7 @@
 
 Quick is an experimental, self-hosted Bun reimplementation inspired by [Shopify Quick](https://shopify.engineering/quick): a tiny internal-app platform for people who want to build, share, and iterate before the idea cools down.
 
-Bring a folder of plain HTML, CSS, and JavaScript. Quick gives it a name, a URL, and a small set of platform APIs—identity, schemaless data, realtime updates, and files—so static prototypes can become useful internal tools without each one growing its own backend.
+Bring a folder of plain HTML, CSS, and JavaScript. Quick gives it a name, a URL, and a small set of platform APIs—identity, schemaless data, realtime updates, files, and AI chat—so static prototypes can become useful internal tools without each one growing its own backend.
 
 The motivating loop is this small:
 
@@ -26,6 +26,7 @@ That is the point: ask for the tool, deploy the tool, use the tool.
 - **Realtime collaboration** — subscribe to collection changes for polls, chats, dashboards, and tiny shared workflows.
 - **Identity included** — know who is using the app without turning every prototype into an auth project.
 - **Files included** — add uploads and stable public site URLs with the SDK.
+- **AI chat without browser secrets** — call `quick.ai.chat(...)` through server-side provider configuration.
 - **Agent-friendly shape** — Quick is designed for small apps generated and refined by coding agents.
 
 For the full product story and API overview, start with [[docs/index|the Quick docs]].
@@ -39,6 +40,7 @@ For the full product story and API overview, start with [[docs/index|the Quick d
 - [[docs/examples/todo|Todo example]]
 - [[docs/examples/chat|Realtime chat example]]
 - [[docs/examples/gallery|Gallery and uploads example]]
+- [[docs/examples/ai-chat|AI chat example]]
 
 ## Current shape
 

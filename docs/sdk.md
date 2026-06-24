@@ -36,6 +36,7 @@ The client exposes:
 
 - `quick.auth`
 - `quick.identity`
+- `quick.ai`
 - `quick.db`
 - `quick.files`
 - `quick.realtime`
@@ -73,6 +74,59 @@ Log out with:
 ```js
 await quick.auth.logout();
 ```
+
+## AI chat
+
+Use `quick.ai` for simple authenticated chat completions from a static app. The basic Shopify-style call accepts an array of messages:
+
+<div class="code-title">index.html</div>
+
+```js
+const res = await quick.ai.chat([{ role: "user", content: "Summarize my tasks" }]);
+
+console.log(res.text);
+```
+
+You can also pass an object with a `messages` property:
+
+<div class="code-title">index.html</div>
+
+```js
+const res = await quick.ai.chat({
+  messages: [
+    { role: "system", content: "Be concise." },
+    { role: "user", content: "Summarize my tasks" },
+  ],
+});
+```
+
+Responses are normalized:
+
+```js
+{
+  text: "...",
+  message: { role: "assistant", content: "..." },
+  usage: {
+    input: 12,
+    output: 34,
+    totalTokens: 46,
+    cost: { total: 0.0001 },
+  },
+}
+```
+
+`quick.ai.chat(...)` requires an authenticated Quick session. If the user is not signed in, the request fails with `401 Authentication required`; use `quick.auth.session()` or `quick.identity.current()` to decide whether to show a sign-in flow.
+
+Provider credentials stay server-side. The Quick server must be configured with AI chat enabled, a provider, a model, and the provider API key, for example:
+
+```sh
+QUICK_CHAT_ENABLED=true
+QUICK_CHAT_PROVIDER=openrouter
+QUICK_CHAT_MODEL=...
+OPENROUTER_API_KEY=...
+```
+
+The browser app only calls `/api/ai/chat`; it never sees the provider API key. Current AI support is intentionally small: simple non-streaming chat only.
 
 ## Database collections
 

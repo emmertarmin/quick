@@ -28,6 +28,10 @@ services:
       QUICK_SITES_ROOT: /data/sites
       QUICK_FILES_ROOT: /data/files
       QUICK_WEB_DEV_UPSTREAM: ${QUICK_WEB_DEV_UPSTREAM:-http://host.docker.internal:4321}
+      QUICK_CHAT_ENABLED: ${QUICK_CHAT_ENABLED:-false}
+      QUICK_CHAT_PROVIDER: ${QUICK_CHAT_PROVIDER:-openrouter}
+      QUICK_CHAT_MODEL: ${QUICK_CHAT_MODEL:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     volumes:
       - .:/app
       - ./runtime/db:/data/db

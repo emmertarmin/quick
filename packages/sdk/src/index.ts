@@ -1,5 +1,8 @@
 import type {
   JsonBlob,
+  QuickAiChatMessage,
+  QuickAiChatRequest,
+  QuickAiChatResponse,
   QuickDocument,
   QuickLoginResponse,
   QuickSessionResponse,
@@ -10,6 +13,9 @@ import type {
 
 export type {
   JsonBlob,
+  QuickAiChatMessage,
+  QuickAiChatRequest,
+  QuickAiChatResponse,
   QuickAuthenticatedSession,
   QuickAnonymousSession,
   QuickDocument,
@@ -48,6 +54,12 @@ export type QuickCollection<T extends JsonBlob = JsonBlob> = {
 
 export type QuickDatabase = {
   collection<T extends JsonBlob = JsonBlob>(name: string): QuickCollection<T>;
+};
+
+export type QuickAiChatInput = QuickAiChatMessage[] | QuickAiChatRequest;
+
+export type QuickAi = {
+  chat(messagesOrRequest: QuickAiChatInput): Promise<QuickAiChatResponse>;
 };
 
 export type QuickAuth = {
@@ -127,6 +139,7 @@ export type QuickRealtime = {
 };
 
 export type QuickClient = {
+  ai: QuickAi;
   auth: QuickAuth;
   db: QuickDatabase;
   files: QuickFiles;
@@ -273,6 +286,17 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
   const anonymousSession: QuickSessionResponse = {
     authenticated: false,
     user: null,
+  };
+
+  const ai: QuickAi = {
+    chat(messagesOrRequest) {
+      const body = Array.isArray(messagesOrRequest) ? { messages: messagesOrRequest } : messagesOrRequest;
+
+      return request<QuickAiChatResponse>("/ai/chat", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
   };
 
   const auth: QuickAuth = {
@@ -604,5 +628,5 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
     },
   };
 
-  return { auth, db, files, identity, realtime, sites };
+  return { ai, auth, db, files, identity, realtime, sites };
 }

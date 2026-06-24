@@ -1,6 +1,6 @@
 # Quick
 
-Quick is a tiny platform for building useful web apps at the speed of a thought. Drop a folder of HTML, CSS, and JavaScript onto Quick, give it a name, and it becomes a live site with platform APIs for identity, persistence, realtime updates, and files.
+Quick is a tiny platform for building useful web apps at the speed of a thought. Drop a folder of HTML, CSS, and JavaScript onto Quick, give it a name, and it becomes a live site with platform APIs for identity, persistence, realtime updates, files, and AI chat.
 
 ```sh
 bun add -g @emmertarmin/quick
@@ -82,6 +82,18 @@ const unsubscribe = votes.subscribe({
 
 Quick's collection subscriptions keep simple collaborative apps simple. You write the state changes; Quick fans them out to open pages.
 
+### Server-side AI chat
+
+Give a static app a simple assistant call without shipping provider secrets to the browser:
+
+<div class="code-title">index.html</div>
+
+```js
+const res = await quick.ai.chat([{ role: "user", content: "Summarize my tasks" }]);
+```
+
+Quick checks the user's session and forwards the request through the server-side AI provider configuration. Current support is simple non-streaming chat.
+
 ### Public site files
 
 Give your app uploads with one call:
@@ -103,7 +115,7 @@ Quick stores file metadata next to your app data and returns stable URLs that wo
 
 The inspiration is Shopify's Quick: static hosting plus a fixed set of platform APIs—database, files, AI, identity, warehouse data, and collaboration primitives—so people can compose tools instead of provisioning services.
 
-This implementation already has the core loop: CLI config and auth, deploys, browser identity, database collections, realtime subscriptions, and file uploads. The tantalizing frontier is what comes next: AI calls from static pages, richer collaboration channels, warehouse-backed dashboards, and reusable mini-libraries shared from site to site.
+This implementation already has the core loop: CLI config and auth, deploys, browser identity, database collections, realtime subscriptions, file uploads, and server-side AI chat calls. The tantalizing frontier is what comes next: richer collaboration channels, warehouse-backed dashboards, and reusable mini-libraries shared from site to site.
 
 ## Dive deeper
 

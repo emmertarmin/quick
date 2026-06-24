@@ -20,6 +20,9 @@ export const port = Number(process.env.PORT ?? 3000);
 export const sitesRoot = process.env.QUICK_SITES_ROOT ?? join(runtimeRoot, "sites");
 export const filesRoot = process.env.QUICK_FILES_ROOT ?? join(runtimeRoot, "files");
 export const maxUploadBytes = 25 * 1024 * 1024;
+export const quickChatEnabled = process.env.QUICK_CHAT_ENABLED?.trim().toLowerCase() === "true";
+export const quickChatProvider = process.env.QUICK_CHAT_PROVIDER?.trim() || "openrouter";
+export const quickChatModel = process.env.QUICK_CHAT_MODEL?.trim() || "";
 
 const entraClientID = process.env.QUICK_ENTRA_CLIENT_ID?.trim();
 const entraClientSecret = process.env.QUICK_ENTRA_CLIENT_SECRET?.trim();

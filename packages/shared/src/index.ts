@@ -50,3 +50,29 @@ export type QuickSite = {
 export type QuickSitesResponse = {
   sites: QuickSite[];
 };
+
+export type QuickAiChatRole = "system" | "user" | "assistant";
+
+export type QuickAiChatMessage = {
+  role: QuickAiChatRole;
+  content: string;
+};
+
+export type QuickAiChatRequest = {
+  messages: QuickAiChatMessage[];
+};
+
+export type QuickAiChatUsage = {
+  input?: number;
+  output?: number;
+  totalTokens?: number;
+  cost?: {
+    total?: number;
+  };
+};
+
+export type QuickAiChatResponse = {
+  text: string;
+  message: QuickAiChatMessage;
+  usage?: QuickAiChatUsage;
+};

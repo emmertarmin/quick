@@ -3,6 +3,7 @@ import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import { websocket } from "hono/bun";
 import { healthResponseSchema } from "./schemas";
 import { authRoutes } from "./routes/auth";
+import { registerAiRoutes } from "./routes/ai";
 import { registerCollectionRoutes } from "./routes/collections";
 import { registerFileRoutes } from "./routes/files";
 import { registerSchemaRoutes } from "./routes/schemas";
@@ -40,6 +41,7 @@ app.openapi(
   (c) => c.json({ status: "ok" as const }),
 );
 app.route("/", authRoutes);
+registerAiRoutes(app);
 registerSdkRoutes(app);
 registerSkillRoutes(app);
 registerSchemaRoutes(app);
