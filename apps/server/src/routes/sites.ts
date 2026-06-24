@@ -3,6 +3,7 @@ import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import type { Context } from "hono";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { unzipSync } from "fflate";
+import sharp from "sharp";
 import { sqlite, sites } from "@quick/db";
 import type { QuickSite } from "@quick/shared";
 import { filesRoot, maxUploadBytes, quickDomain, quickScheme, sitesRoot } from "../config";
@@ -40,26 +41,31 @@ const thumbnailContentTypes = new Map([
   [".jpeg", "image/jpeg"],
 ]);
 const maxThumbnailBytes = 5 * 1024 * 1024;
+const thumbnailWidth = 640;
+const thumbnailHeight = 480;
+const thumbnailFormat = ".webp";
 
 function thumbnailDir() {
   return join(filesRoot, "_thumbnails");
 }
 
-function thumbnailUrl(site: string) {
-  return `/api/sites/${encodeURIComponent(site)}/thumbnail`;
+function thumbnailUrl(site: string, version?: number) {
+  const base = `/api/sites/${encodeURIComponent(site)}/thumbnail`;
+  return version === undefined ? base : `${base}?v=${version}`;
 }
 
 async function thumbnailFile(site: string) {
   for (const extension of thumbnailContentTypes.keys()) {
     const path = join(thumbnailDir(), `${site}${extension}`);
     const info = await stat(path).catch(() => undefined);
-    if (info?.isFile()) return path;
+    if (info?.isFile()) return { path, version: Math.trunc(info.mtimeMs) };
   }
   return undefined;
 }
 
 async function siteThumbnailFields(site: string) {
-  return await thumbnailFile(site) ? { thumbnailUrl: thumbnailUrl(site) } : {};
+  const thumbnail = await thumbnailFile(site);
+  return thumbnail ? { thumbnailUrl: thumbnailUrl(site, thumbnail.version) } : {};
 }
 
 function thumbnailExtension(contentType: string) {
@@ -297,7 +303,7 @@ async function purgeSite(site: string): Promise<PurgeResult> {
 
   await rm(sourcePath, { recursive: true, force: true });
   await rm(fileUploadsPath, { recursive: true, force: true });
-  if (thumbnailPath) await rm(thumbnailPath, { force: true });
+  if (thumbnailPath) await rm(thumbnailPath.path, { force: true });
 
   sqlite.transaction((purgedSite: string) => {
     sqlite.prepare("delete from json_documents where site = ?").run(purgedSite);
@@ -472,14 +478,21 @@ async function storeThumbnail(site: string, contentType: string, bytes: ArrayBuf
     throw new Error("Thumbnail must be 5 MB or smaller");
   }
 
+  const optimized = await sharp(Buffer.from(bytes), { failOn: "warning" })
+    .rotate()
+    .resize({ width: thumbnailWidth, height: thumbnailHeight, fit: "cover", position: "top" })
+    .webp({ quality: 82, effort: 4 })
+    .toBuffer();
+
   await mkdir(thumbnailDir(), { recursive: true });
   for (const existing of thumbnailContentTypes.keys()) {
     await rm(join(thumbnailDir(), `${site}${existing}`), { force: true });
   }
 
-  const path = join(thumbnailDir(), `${site}${extension}`);
-  await writeFile(path, Buffer.from(bytes));
-  return { thumbnailUrl: thumbnailUrl(site) };
+  const path = join(thumbnailDir(), `${site}${thumbnailFormat}`);
+  await writeFile(path, optimized);
+  const info = await stat(path);
+  return { thumbnailUrl: thumbnailUrl(site, Math.trunc(info.mtimeMs)) };
 }
 
 const apiErrorResponseSchema = errorResponseSchema.catchall(z.unknown()).openapi("SiteErrorResponse");
@@ -594,15 +607,15 @@ export function registerSiteRoutes(app: OpenAPIHono) {
       return c.json(deployError("Invalid site name"), 400);
     }
 
-    const path = await thumbnailFile(site);
-    if (!path) {
+    const thumbnail = await thumbnailFile(site);
+    if (!thumbnail) {
       return c.json(deployError("Thumbnail not found"), 404);
     }
 
-    return new Response(Bun.file(path), {
+    return new Response(Bun.file(thumbnail.path), {
       headers: {
-        "Cache-Control": "no-cache",
-        "Content-Type": thumbnailContentTypes.get(extname(path).toLowerCase()) ?? "application/octet-stream",
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "Content-Type": thumbnailContentTypes.get(extname(thumbnail.path).toLowerCase()) ?? "application/octet-stream",
       },
     });
   });

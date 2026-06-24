@@ -124,8 +124,13 @@
         if (site.thumbnailUrl) {
           const image = document.createElement("img");
           image.src = site.thumbnailUrl;
+          image.srcset = `${site.thumbnailUrl} 640w`;
+          image.sizes = "min(320px, 100vw)";
           image.alt = "";
+          image.width = 320;
+          image.height = 240;
           image.loading = "lazy";
+          image.decoding = "async";
           card.append(image);
         } else {
           const placeholder = document.createElement("div");
@@ -385,13 +390,16 @@
 
   .sites-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-    gap: 2rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, clamp(10rem, 28vw, 15rem)), 1fr));
+    justify-items: center;
+    gap: clamp(1.25rem, 3vw, 2rem);
   }
 
   :global(.site-card) {
     position: relative;
     display: block;
+    width: 100%;
+    max-width: 320px;
     aspect-ratio: 4 / 3;
     overflow: hidden;
     border: 1px solid var(--border);
@@ -452,7 +460,14 @@
     justify-content: space-between;
     padding: 1rem;
     background: linear-gradient(180deg, rgb(0 0 0 / 0.34), transparent 42%, rgb(0 0 0 / 0.68));
+    opacity: 0;
     pointer-events: none;
+    transition: opacity 160ms ease;
+  }
+
+  :global(.site-card:hover .site-card-overlay),
+  :global(.site-card:focus-visible .site-card-overlay) {
+    opacity: 1;
   }
 
   :global(.site-title) {
@@ -473,26 +488,16 @@
   :global(.site-meta) {
     display: grid;
     gap: 0.25rem;
-    opacity: 0;
-    transform: translateY(0.35rem);
     color: white;
     font-size: 0.86rem;
     line-height: 1.35;
     text-shadow: 0 2px 8px rgb(0 0 0 / 0.9);
-    transition: opacity 160ms ease, transform 160ms ease;
-  }
-
-  :global(.site-card:hover .site-meta),
-  :global(.site-card:focus-visible .site-meta) {
-    opacity: 1;
-    transform: translateY(0);
   }
 
   @media (max-width: 800px) {
     .shell { width: min(100% - 2rem, 76rem); padding: 3rem 0; }
     .hero-row, .section-heading { display: grid; }
     .upload-form { grid-template-columns: 1fr; }
-    .sites-list { grid-template-columns: 1fr; gap: 1.25rem; }
     .auth-status { min-width: 0; }
   }
 </style>
