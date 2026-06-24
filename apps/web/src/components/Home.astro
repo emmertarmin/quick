@@ -14,12 +14,12 @@
     <h2 id="new-site-title">Create or update a site</h2>
     <form id="upload-form" class="upload-form">
       <label>
-        Site name
-        <input id="site-name" name="site" autocomplete="off" pattern="[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?" placeholder="summer-poll" required />
-      </label>
-      <label>
         Upload
         <input id="site-file" name="file" type="file" accept=".html,.zip,text/html,application/zip" required />
+      </label>
+      <label>
+        Site name
+        <input id="site-name" name="site" autocomplete="off" pattern="[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?" placeholder="summer-poll" required />
       </label>
       <button class="primary" type="submit">Deploy site</button>
     </form>
@@ -43,6 +43,8 @@
     authStatus: document.querySelector("#auth-status"),
     form: document.querySelector("#upload-form"),
     message: document.querySelector("#upload-message"),
+    siteFile: document.querySelector("#site-file"),
+    siteName: document.querySelector("#site-name"),
     sitesList: document.querySelector("#sites-list"),
   };
 
@@ -71,6 +73,18 @@
   function setMessage(text, kind = "") {
     elements.message.textContent = text;
     elements.message.className = `message ${kind}`.trim();
+  }
+
+  function siteNameFromFileName(fileName) {
+    if (fileName.toLowerCase() === "index.html") return "";
+
+    const withoutExtension = fileName.replace(/\.[^.]+$/, "");
+    return withoutExtension
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 63)
+      .replace(/-+$/g, "");
   }
 
   function setDeploySuccess(deployed) {
@@ -240,6 +254,16 @@
 
     return payload;
   }
+
+  elements.siteFile.addEventListener("change", () => {
+    if (elements.siteName.value.trim() !== "") return;
+
+    const file = elements.siteFile.files?.[0];
+    if (!file?.name) return;
+
+    const siteName = siteNameFromFileName(file.name);
+    if (siteName) elements.siteName.value = siteName;
+  });
 
   elements.form.addEventListener("submit", async (event) => {
     event.preventDefault();
