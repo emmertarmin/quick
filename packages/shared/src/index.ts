@@ -77,13 +77,43 @@ export type QuickAiChatResponse = {
   usage?: QuickAiChatUsage;
 };
 
+export type QuickAiAgentTool = {
+  name: string;
+  description: string;
+  label: string;
+};
+
+export type QuickAiToolsResponse = {
+  tools: QuickAiAgentTool[];
+};
+
 export type QuickAiAgentRequest = {
   input: string;
   instructions?: string;
+  tools?: string[];
 };
+
+export type QuickAiAgentToolCall = {
+  name: string;
+  input: Record<string, unknown>;
+  isError?: boolean;
+};
+
+export type QuickAiAgentTranscriptBlock =
+  | { type: "text"; text: string }
+  | { type: "thinking"; thinking: string }
+  | { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> }
+  | { type: "image"; mimeType: string };
+
+export type QuickAiAgentTranscriptMessage =
+  | { role: "user"; content: QuickAiAgentTranscriptBlock[] }
+  | { role: "assistant"; content: QuickAiAgentTranscriptBlock[]; stopReason?: string; errorMessage?: string }
+  | { role: "toolResult"; toolCallId: string; toolName: string; content: QuickAiAgentTranscriptBlock[]; details?: unknown; isError: boolean };
 
 export type QuickAiAgentResponse = {
   output: string;
   message: QuickAiChatMessage;
   usage?: QuickAiChatUsage;
+  toolCalls?: QuickAiAgentToolCall[];
+  transcript?: QuickAiAgentTranscriptMessage[];
 };

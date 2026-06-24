@@ -134,18 +134,22 @@ The browser app only calls `/api/ai/chat`; it never sees the provider API key.
 
 ### AI agent
 
-`quick.ai.agent(...)` runs a single no-tools agent turn using the same server-side model configuration. Phase 1 intentionally exposes no arbitrary tools.
+`quick.ai.agent(...)` runs a single agent turn using the same server-side model configuration. It exposes only whitelisted Quick-native tools requested by name.
 
 ```js
+const tools = await quick.ai.tools();
+
 const res = await quick.ai.agent({
-  instructions: "Be concise.",
-  input: "Turn this feature idea into three milestones.",
+  instructions: "Be concise. Use the available tools first.",
+  input: "Summarize this app context and current user.",
+  tools: tools.tools.map((tool) => tool.name),
 });
 
 console.log(res.output);
+console.log(res.toolCalls);
 ```
 
-`quick.ai.agent(...)` requires an authenticated Quick session and uses `/api/ai/agent`.
+`quick.ai.agent(...)` requires an authenticated Quick session and uses `/api/ai/agent`. `quick.ai.tools()` lists the current whitelisted tools from `/api/ai/tools`.
 
 ## Database collections
 

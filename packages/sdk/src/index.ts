@@ -5,6 +5,7 @@ import type {
   QuickAiChatMessage,
   QuickAiChatRequest,
   QuickAiChatResponse,
+  QuickAiToolsResponse,
   QuickDocument,
   QuickLoginResponse,
   QuickSessionResponse,
@@ -17,9 +18,14 @@ export type {
   JsonBlob,
   QuickAiAgentRequest,
   QuickAiAgentResponse,
+  QuickAiAgentTool,
+  QuickAiAgentToolCall,
+  QuickAiAgentTranscriptBlock,
+  QuickAiAgentTranscriptMessage,
   QuickAiChatMessage,
   QuickAiChatRequest,
   QuickAiChatResponse,
+  QuickAiToolsResponse,
   QuickAuthenticatedSession,
   QuickAnonymousSession,
   QuickDocument,
@@ -65,6 +71,7 @@ export type QuickAiChatInput = QuickAiChatMessage[] | QuickAiChatRequest;
 export type QuickAi = {
   agent(request: QuickAiAgentRequest): Promise<QuickAiAgentResponse>;
   chat(messagesOrRequest: QuickAiChatInput): Promise<QuickAiChatResponse>;
+  tools(): Promise<QuickAiToolsResponse>;
 };
 
 export type QuickAuth = {
@@ -308,6 +315,10 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
         method: "POST",
         body: JSON.stringify(body),
       });
+    },
+
+    tools() {
+      return request<QuickAiToolsResponse>("/ai/tools");
     },
   };
 

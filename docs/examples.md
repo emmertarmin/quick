@@ -8,7 +8,7 @@ quick deploy ./examples/chat chat
 quick deploy ./examples/gallery gallery
 quick deploy ./examples/realtime realtime
 quick deploy ./examples/ai-chat ai-chat
-quick deploy ./examples/agentic-app-ideas agentic-app-ideas
+quick deploy ./examples/agent-demo agent-demo
 ```
 
 ## The collection theme
@@ -20,7 +20,7 @@ Quick examples are not templates for large frameworks. They are little pressure 
 - [Gallery](./gallery/) demonstrates `quick.files` for uploads, file metadata, public URLs, and deletion.
 - Realtime demonstrates `quick.realtime.presence(...)` for live presence and viewport-relative cursors.
 - [AI Chat](./ai-chat/) demonstrates ephemeral, authenticated `quick.ai.chat(...)` calls through the server-side AI gateway.
-- [Agentic App Ideas](./agentic-app-ideas/) demonstrates `quick.ai.agent(...)` with a preloaded product ideation workflow.
+- [Agent Demo](./agent-demo/) demonstrates `quick.ai.agent(...)` calling whitelisted Quick-native tools for app context and current user summaries.
 
 Read them as recipes. Copy the smallest useful piece, change the collection name, and let the next app grow from there.
 
