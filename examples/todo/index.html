@@ -43,7 +43,6 @@
         await todos.create({
           title,
           done: false,
-          created_at: new Date().toISOString(),
         });
 
         titleInput.value = "";
@@ -53,7 +52,6 @@
       async function toggleTodo(todo) {
         await todos.update(todo.id, {
           done: !todo.done,
-          updated_at: new Date().toISOString(),
         });
 
         await main();
@@ -85,7 +83,7 @@
 
       async function main() {
         try {
-          const allTodos = await todos.all();
+          const allTodos = await todos.list();
           allTodos.sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
 
           list.replaceChildren(...allTodos.map(renderTodo));

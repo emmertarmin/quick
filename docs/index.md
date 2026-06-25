@@ -92,7 +92,7 @@ Give a static app a simple assistant call without shipping provider secrets to t
 const res = await quick.ai.chat([{ role: "user", content: "Summarize my tasks" }]);
 ```
 
-Quick checks the user's session and forwards the request through the server-side AI provider configuration. Current support is simple non-streaming chat.
+Quick checks the user's session and forwards the request through the server-side AI provider configuration. Replies can be awaited in one call with `quick.ai.chat(...)` or streamed token by token with `quick.ai.chatStream(...)`. For tool-using turns, `quick.ai.agent(...)` and `quick.ai.agentStream(...)` run an agent against a whitelisted array of Quick-native tool names so it can read and write your site's collections. See the [SDK](./sdk/) for details.
 
 ### Public site files
 
@@ -115,11 +115,10 @@ Quick stores file metadata next to your app data and returns stable URLs that wo
 
 The inspiration is Shopify's Quick: static hosting plus a fixed set of platform APIs—database, files, AI, identity, warehouse data, and collaboration primitives—so people can compose tools instead of provisioning services.
 
-This implementation already has the core loop: CLI config and auth, deploys, browser identity, database collections, realtime subscriptions, file uploads, and server-side AI chat calls. The tantalizing frontier is what comes next: richer collaboration channels, warehouse-backed dashboards, and reusable mini-libraries shared from site to site.
+This implementation already has the core loop: CLI config and auth, deploys, browser identity, database collections, realtime subscriptions, file uploads, and server-side AI chat and agent calls. The tantalizing frontier is what comes next: richer collaboration channels, warehouse-backed dashboards, and reusable mini-libraries shared from site to site.
 
 ## Dive deeper
 
 - [SDK](./sdk/)
-- [Server](./server/)
 - [CLI](./cli/)
 - [Examples](./examples/)

@@ -36,7 +36,7 @@ function rowToMetadata(row: SiteRow): SiteMetadata {
 }
 
 export const sites = {
-  all() {
+  list() {
     return Sites.all(db).map(rowToMetadata);
   },
 

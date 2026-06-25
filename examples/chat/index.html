@@ -48,13 +48,11 @@
           return;
         }
 
-        const now = new Date().toISOString();
         await messages.create({
           body,
           user_id: currentUser.id,
           user_email: currentUser.email ?? currentUser.id,
           user_name: currentUser.name ?? null,
-          created_at: now,
         });
 
         bodyInput.value = "";
@@ -93,7 +91,7 @@
 
       async function loadMessages() {
         try {
-          const allMessages = await messages.all();
+          const allMessages = await messages.list();
           allMessages.sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
 
           list.replaceChildren(...allMessages.map(renderMessage));

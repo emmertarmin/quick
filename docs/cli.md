@@ -256,6 +256,59 @@ Options:
 - `--remote <url>` — override the resolved Quick server URL.
 - `--yes`, `-y` — upload without interactive confirmation.
 
+### `quick ai`
+
+Inspect server-side Quick AI capabilities.
+
+```sh
+quick ai <subcommand>
+```
+
+#### `quick ai tools`
+
+List the Quick-native AI agent tools exposed by the resolved server.
+
+```sh
+quick ai tools [--remote <url>] [--json]
+```
+
+Options:
+
+- `--remote <url>` — override the resolved Quick server URL.
+- `--json` — print machine-readable tool metadata.
+
+Examples:
+
+```sh
+quick ai tools
+quick ai tools --json
+quick ai tools --remote https://quick.example.com
+```
+
+Use the returned tool names in `quick.ai.agent({ tools: [...] })`.
+
+### `quick stats`
+
+Inspect deployment, source, database, uploaded-file, and health stats for a Quick site.
+
+```sh
+quick stats [options] <site>
+```
+
+Options:
+
+- `--remote <url>` — override the resolved Quick server URL.
+- `--json` — print machine-readable JSON instead of markdown.
+- `--top <n>` — number of largest/top items to show. Defaults to `10`.
+
+Examples:
+
+```sh
+quick stats chat
+quick stats gallery --json
+quick stats todo --top 20
+```
+
 ### `quick purge`
 
 Permanently delete a site from a Quick server.

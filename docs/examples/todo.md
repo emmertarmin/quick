@@ -23,7 +23,6 @@ Creating a todo is just a document insert:
 await todos.create({
   title,
   done: false,
-  created_at: new Date().toISOString(),
 });
 ```
 
@@ -34,7 +33,6 @@ Toggling is a partial update:
 ```js
 await todos.update(todo.id, {
   done: !todo.done,
-  updated_at: new Date().toISOString(),
 });
 ```
 
@@ -43,7 +41,7 @@ And rendering begins by reading all documents back:
 <div class="code-title">examples/todo/index.html</div>
 
 ```js
-const allTodos = await todos.all();
+const allTodos = await todos.list();
 ```
 
 ## What to notice

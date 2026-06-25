@@ -24,7 +24,6 @@ await messages.create({
   user_id: currentUser.id,
   user_email: currentUser.email ?? currentUser.id,
   user_name: currentUser.name ?? null,
-  created_at: now,
 });
 ```
 

@@ -5,6 +5,7 @@ import { collections, sites } from "@quick/db";
 import type { JsonBlob, QuickDocument, QuickUser } from "@quick/shared";
 import type { Context } from "hono";
 import { Type, type Static, type TSchema } from "typebox";
+import { searchCollectionDocuments } from "./collection-search";
 import { quickDomain, quickScheme, sitesRoot } from "./config";
 
 export type QuickAiToolSummary = {
@@ -163,7 +164,7 @@ async function deployedSiteNames() {
 }
 
 async function listSiteMetadata() {
-  const metadataBySite = new Map(sites.all().map((metadata) => [metadata.site, metadata]));
+  const metadataBySite = new Map(sites.list().map((metadata) => [metadata.site, metadata]));
   const names = new Set([...metadataBySite.keys(), ...await deployedSiteNames()]);
 
   return Promise.all(
@@ -173,142 +174,6 @@ async function listSiteMetadata() {
       return { ...metadata, site, exists: true as const, url: siteUrl(site), hasIndex: await hasSiteIndex(site) };
     }),
   );
-}
-
-function searchableText(value: unknown) {
-  return JSON.stringify(value).toLowerCase();
-}
-
-function objectEntries(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-
-  return Object.entries(value as Record<string, unknown>);
-}
-
-function pathValues(value: unknown, path: string): unknown[] {
-  const parts = path.split(".").filter(Boolean);
-  let values = [value];
-
-  for (const part of parts) {
-    values = values.flatMap((current) => {
-      if (Array.isArray(current)) {
-        return current.flatMap((item) => pathValues(item, part));
-      }
-
-      if (current && typeof current === "object" && part in current) {
-        return [(current as Record<string, unknown>)[part]];
-      }
-
-      return [];
-    });
-  }
-
-  return values;
-}
-
-function deepEqual(left: unknown, right: unknown) {
-  if (Object.is(left, right)) {
-    return true;
-  }
-
-  if (left && right && typeof left === "object" && typeof right === "object") {
-    return JSON.stringify(left) === JSON.stringify(right);
-  }
-
-  return false;
-}
-
-function valueEquals(value: unknown, expected: unknown): boolean {
-  if (Array.isArray(value)) {
-    return value.some((item) => valueEquals(item, expected));
-  }
-
-  return deepEqual(value, expected);
-}
-
-function comparable(value: unknown) {
-  return typeof value === "number" || typeof value === "string" || value instanceof Date ? value : undefined;
-}
-
-function regexFromFilter(pattern: unknown, options: unknown) {
-  if (typeof pattern !== "string") {
-    throw new Error("$regex must be a string");
-  }
-
-  if (pattern.length > 256) {
-    throw new Error("$regex patterns are capped at 256 characters");
-  }
-
-  if (options !== undefined && (typeof options !== "string" || /[^imsu]/.test(options))) {
-    throw new Error("$options may only contain i, m, s, or u");
-  }
-
-  return new RegExp(pattern, options);
-}
-
-function matchesOperator(values: unknown[], operator: string, operand: unknown, condition: Record<string, unknown>) {
-  switch (operator) {
-    case "$eq": return values.some((value) => valueEquals(value, operand));
-    case "$ne": return !values.some((value) => valueEquals(value, operand));
-    case "$gt": return values.some((value) => comparable(value) !== undefined && comparable(operand) !== undefined && comparable(value)! > comparable(operand)!);
-    case "$gte": return values.some((value) => comparable(value) !== undefined && comparable(operand) !== undefined && comparable(value)! >= comparable(operand)!);
-    case "$lt": return values.some((value) => comparable(value) !== undefined && comparable(operand) !== undefined && comparable(value)! < comparable(operand)!);
-    case "$lte": return values.some((value) => comparable(value) !== undefined && comparable(operand) !== undefined && comparable(value)! <= comparable(operand)!);
-    case "$in": {
-      if (!Array.isArray(operand)) throw new Error("$in must be an array");
-      return values.some((value) => operand.some((expected) => valueEquals(value, expected)));
-    }
-    case "$nin": {
-      if (!Array.isArray(operand)) throw new Error("$nin must be an array");
-      return !values.some((value) => operand.some((expected) => valueEquals(value, expected)));
-    }
-    case "$exists": return operand ? values.length > 0 : values.length === 0;
-    case "$regex": {
-      const regex = regexFromFilter(operand, condition.$options);
-      return values.some((value) => typeof value === "string" && regex.test(value));
-    }
-    case "$options": return true;
-    default: throw new Error(`Unsupported filter operator: ${operator}`);
-  }
-}
-
-function matchesFieldFilter(document: QuickDocument, path: string, condition: unknown) {
-  const values = pathValues(document, path);
-  const entries = objectEntries(condition);
-
-  if (entries?.some(([key]) => key.startsWith("$"))) {
-    return entries.every(([operator, operand]) => matchesOperator(values, operator, operand, condition as Record<string, unknown>));
-  }
-
-  return values.some((value) => valueEquals(value, condition));
-}
-
-function matchesMongoFilter(document: QuickDocument, filter: unknown): boolean {
-  const entries = objectEntries(filter);
-
-  if (!entries) {
-    throw new Error("filter must be a JSON object");
-  }
-
-  return entries.every(([key, condition]) => {
-    if (key === "$and") {
-      if (!Array.isArray(condition)) throw new Error("$and must be an array of filter objects");
-      return condition.every((item) => matchesMongoFilter(document, item));
-    }
-
-    if (key === "$or") {
-      if (!Array.isArray(condition)) throw new Error("$or must be an array of filter objects");
-      return condition.some((item) => matchesMongoFilter(document, item));
-    }
-
-    if (key.startsWith("$")) {
-      throw new Error(`Unsupported top-level filter operator: ${key}`);
-    }
-
-    return matchesFieldFilter(document, key, condition);
-  });
 }
 
 function padDatePart(value: number) {
@@ -346,7 +211,7 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     },
   },
   {
-    name: "quick_currentUser_get",
+    name: "quick_user_get",
     label: "Current user",
     description: "Return the authenticated Quick user for this request.",
     parameters: Type.Object({}),
@@ -356,7 +221,7 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     }),
   },
   {
-    name: "quick_appContext_get",
+    name: "quick_context_get",
     label: "App context",
     description: "Return the current Quick app/site context for this request.",
     parameters: Type.Object({}),
@@ -375,9 +240,9 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     },
   },
   {
-    name: "quick_collection_all",
-    label: "List collection documents",
-    description: "Read documents from a Quick DB collection for the current app/site. Mirrors quick.db.collection(name).all() with an optional safety limit.",
+    name: "quick_documents_list",
+    label: "List documents",
+    description: "Read documents from a Quick DB collection for the current app/site. Mirrors quick.db.collection(name).list() with an optional safety limit.",
     parameters: Type.Object({
       collection: Type.String({ description: "Collection name, e.g. 'todos' or 'messages'.", minLength: 1 }),
       limit: Type.Optional(Type.Integer({ description: "Maximum number of documents to return. Defaults to 50 and is capped at 200.", minimum: 1, maximum: 200 })),
@@ -386,7 +251,7 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
       const input = params as { collection: string; limit?: number };
       const site = requireCurrentSite(ctx.c);
       const limit = Math.min(input.limit ?? 50, 200);
-      const documents = collections.all(site, input.collection);
+      const documents = collections.list(site, input.collection);
 
       return {
         site,
@@ -399,8 +264,8 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     },
   },
   {
-    name: "quick_collection_get",
-    label: "Get collection document",
+    name: "quick_document_get",
+    label: "Get document",
     description: "Read a single document by id from a Quick DB collection for the current app/site. Mirrors quick.db.collection(name).get(id).",
     parameters: Type.Object({
       collection: Type.String({ description: "Collection name, e.g. 'todos' or 'messages'.", minLength: 1 }),
@@ -421,8 +286,8 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     },
   },
   {
-    name: "quick_collection_create",
-    label: "Create collection document",
+    name: "quick_document_create",
+    label: "Create document",
     description: "Create a document in a Quick DB collection for the current app/site. Mirrors quick.db.collection(name).create(document).",
     parameters: Type.Object({
       collection: Type.String({ description: "Collection name, e.g. 'todos' or 'messages'.", minLength: 1 }),
@@ -442,8 +307,8 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     },
   },
   {
-    name: "quick_collection_update",
-    label: "Update collection document",
+    name: "quick_document_update",
+    label: "Update document",
     description: "Merge fields into an existing Quick DB document for the current app/site. Mirrors quick.db.collection(name).update(id, document).",
     parameters: Type.Object({
       collection: Type.String({ description: "Collection name, e.g. 'todos' or 'messages'.", minLength: 1 }),
@@ -465,8 +330,8 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     },
   },
   {
-    name: "quick_collection_delete",
-    label: "Delete collection document",
+    name: "quick_document_delete",
+    label: "Delete document",
     description: "Delete a document by id from a Quick DB collection for the current app/site. Mirrors quick.db.collection(name).delete(id).",
     parameters: Type.Object({
       collection: Type.String({ description: "Collection name, e.g. 'todos' or 'messages'.", minLength: 1 }),
@@ -487,8 +352,8 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     },
   },
   {
-    name: "quick_collection_search",
-    label: "Search collection documents",
+    name: "quick_documents_search",
+    label: "Search documents",
     description: "Search documents in a Quick DB collection for the current app/site. Supports optional broad text query plus a Mongo-inspired filter with dot paths and operators like $eq, $in, $exists, $regex, $and, and $or.",
     parameters: Type.Object({
       collection: Type.String({ description: "Collection name, e.g. 'todos' or 'messages'.", minLength: 1 }),
@@ -501,25 +366,10 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
       const input = params as { collection: string; query?: string; filter?: unknown; page?: number; pageSize?: number };
       const site = requireCurrentSite(ctx.c);
 
-      if (!input.query && input.filter === undefined) {
-        throw new Error("quick_collection_search requires query, filter, or both");
-      }
-
-      const query = input.query?.toLowerCase();
-      const matches = collections.all(site, input.collection).filter((document) => {
-        const textMatches = query ? searchableText(document).includes(query) : true;
-        const filterMatches = input.filter === undefined ? true : matchesMongoFilter(document, input.filter);
-        return textMatches && filterMatches;
-      });
-      const { items, ...results } = paged(matches, input.page, input.pageSize);
-
       return {
         site,
         collection: input.collection,
-        query: input.query ?? null,
-        filter: input.filter ?? null,
-        ...results,
-        documents: items,
+        ...searchCollectionDocuments(collections.list(site, input.collection), input),
       };
     },
   },
@@ -534,7 +384,7 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
     execute: (ctx, params) => {
       const input = params as { page?: number; pageSize?: number };
       const site = requireCurrentSite(ctx.c);
-      const files = collections.all(site, filesCollection).map(asQuickFileDocument).filter((file) => file !== undefined);
+      const files = collections.list(site, filesCollection).map(asQuickFileDocument).filter((file) => file !== undefined);
       const { items, ...results } = paged(files, input.page, input.pageSize);
 
       return {

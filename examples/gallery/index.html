@@ -145,7 +145,7 @@
 
       async function loadImages() {
         try {
-          const files = await quick.files.all();
+          const files = await quick.files.list();
           const images = files
             .filter((file) => file.content_type.startsWith("image/"))
             .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));

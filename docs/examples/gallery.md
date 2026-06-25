@@ -22,7 +22,7 @@ The app lists files from Quick, filters to images, and sorts newest first:
 <div class="code-title">examples/gallery/index.html</div>
 
 ```js
-const files = await quick.files.all();
+const files = await quick.files.list();
 const images = files
   .filter((file) => file.content_type.startsWith("image/"))
   .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));

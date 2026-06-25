@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { collections } from "@quick/db";
 import type { JsonBlob, QuickDocument } from "@quick/shared";
+import { searchCollectionDocuments } from "../collection-search";
 import {
   collectionParamsSchema,
   documentParamsSchema,
@@ -40,6 +41,47 @@ const apiQuickDocumentSchema = quickDocumentSchema.openapi("QuickDocument", {
     status: "draft",
     created_at: "2026-06-14T00:00:00.000Z",
     updated_at: "2026-06-14T00:00:00.000Z",
+  },
+});
+
+const apiCollectionSearchRequestSchema = z.object({
+  query: z.string().min(1).optional(),
+  filter: jsonBlobSchema.optional(),
+  page: z.number().int().min(1).optional(),
+  pageSize: z.number().int().min(1).max(100).optional(),
+}).openapi("CollectionSearchRequest", {
+  description: "Optional text query plus Mongo-inspired document filter.",
+  example: { query: "draft", filter: { status: "draft" }, page: 1, pageSize: 20 },
+});
+
+const apiCollectionSearchResponseSchema = z.object({
+  query: z.string().nullable(),
+  filter: apiJsonBlobSchema.nullable(),
+  page: z.number(),
+  pageSize: z.number(),
+  offset: z.number(),
+  total: z.number(),
+  returned: z.number(),
+  hasMore: z.boolean(),
+  documents: z.array(apiQuickDocumentSchema),
+}).openapi("CollectionSearchResponse", {
+  description: "Paginated collection search results.",
+  example: {
+    query: "draft",
+    filter: { status: "draft" },
+    page: 1,
+    pageSize: 20,
+    offset: 0,
+    total: 1,
+    returned: 1,
+    hasMore: false,
+    documents: [{
+      id: "document-1",
+      title: "Hello Quick DB",
+      status: "draft",
+      created_at: "2026-06-14T00:00:00.000Z",
+      updated_at: "2026-06-14T00:00:00.000Z",
+    }],
   },
 });
 
@@ -84,6 +126,7 @@ async function readJsonObject(request: { json(): Promise<unknown> }) {
 }
 
 const collectionPath = "/db/collections/{collection}/documents";
+const collectionSearchPath = "/db/collections/{collection}/documents/search";
 const documentPath = "/db/collections/{collection}/documents/{id}";
 
 type CollectionRealtimeEvent =
@@ -223,6 +266,16 @@ async function readDocumentMutation(c: Context): Promise<DocumentMutation> {
   return { site, collection, id, body };
 }
 
+function searchInputFromBody(body: JsonBlob) {
+  const parsed = apiCollectionSearchRequestSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid search request" };
+  }
+
+  return parsed.data;
+}
+
 export function registerCollectionRoutes(app: OpenAPIHono) {
   app.openapi(
     createRoute({
@@ -274,7 +327,63 @@ export function registerCollectionRoutes(app: OpenAPIHono) {
         return c.json({ error: "Missing trusted X-Quick-Site header" }, 400);
       }
 
-      return c.json(collections.all(site, c.req.param("collection")).map(asQuickDocument), 200);
+      return c.json(collections.list(site, c.req.param("collection")).map(asQuickDocument), 200);
+    },
+  );
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: collectionSearchPath,
+      request: {
+        headers: apiSiteHeaderSchema,
+        params: apiCollectionParamsSchema,
+        body: {
+          content: {
+            "application/json": {
+              schema: apiCollectionSearchRequestSchema,
+            },
+          },
+          description: "Search query and/or filter plus optional pagination.",
+          required: true,
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "application/json": {
+              schema: apiCollectionSearchResponseSchema,
+            },
+          },
+          description: "Matching collection documents.",
+        },
+        400: errorJson("Missing, invalid, or unsupported request data."),
+      },
+    }),
+    async (c) => {
+      const site = siteFromHeader(c);
+
+      if (!site) {
+        return c.json({ error: "Missing trusted X-Quick-Site header" }, 400);
+      }
+
+      const body = await readJsonObject(c.req);
+
+      if (!body) {
+        return c.json({ error: "Expected a JSON object" }, 400);
+      }
+
+      const input = searchInputFromBody(body);
+
+      if ("error" in input) {
+        return c.json({ error: input.error }, 400);
+      }
+
+      try {
+        return c.json(searchCollectionDocuments(collections.list(site, c.req.param("collection")).map(asQuickDocument), input), 200);
+      } catch (error) {
+        return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+      }
     },
   );
 

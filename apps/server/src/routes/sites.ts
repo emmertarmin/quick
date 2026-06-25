@@ -97,7 +97,7 @@ async function deployedSiteNames() {
 }
 
 async function listSites(): Promise<QuickSite[]> {
-  const metadataBySite = new Map(sites.all().map((metadata) => [metadata.site, metadata]));
+  const metadataBySite = new Map(sites.list().map((metadata) => [metadata.site, metadata]));
   const names = new Set([...metadataBySite.keys(), ...await deployedSiteNames()]);
 
   return Promise.all(

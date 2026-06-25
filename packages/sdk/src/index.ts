@@ -56,13 +56,33 @@ export type QuickCollectionSubscribeHandlers<T extends JsonBlob = JsonBlob> = {
   onError?(error: Event | Error): void;
 };
 
+export type QuickCollectionSearchOptions = {
+  query?: string;
+  filter?: JsonBlob;
+  page?: number;
+  pageSize?: number;
+};
+
+export type QuickCollectionSearchResponse<T extends JsonBlob = JsonBlob> = {
+  query: string | null;
+  filter: JsonBlob | null;
+  page: number;
+  pageSize: number;
+  offset: number;
+  total: number;
+  returned: number;
+  hasMore: boolean;
+  documents: Array<T & QuickDocument>;
+};
+
 export type QuickCollection<T extends JsonBlob = JsonBlob> = {
-  all(): Promise<Array<T & QuickDocument>>;
+  list(): Promise<Array<T & QuickDocument>>;
   create(document: T): Promise<T & QuickDocument>;
   get(id: string): Promise<T & QuickDocument>;
   replace(id: string, document: T): Promise<T & QuickDocument>;
   update(id: string, document: Partial<T>): Promise<T & QuickDocument>;
   delete(id: string): Promise<T & QuickDocument>;
+  search(options: QuickCollectionSearchOptions): Promise<QuickCollectionSearchResponse<T>>;
   subscribe(handlers: QuickCollectionSubscribeHandlers<T>): () => void;
 };
 
@@ -108,13 +128,13 @@ export type QuickFile = {
 };
 
 export type QuickFiles = {
-  all(): Promise<QuickFile[]>;
+  list(): Promise<QuickFile[]>;
   upload(file: File): Promise<QuickFile>;
   delete(id: string): Promise<QuickFile>;
 };
 
 export type QuickSites = {
-  all(): Promise<QuickSite[]>;
+  list(): Promise<QuickSite[]>;
   get(site: string): Promise<QuickSite | { site: string; exists: false; url: string; hasIndex: false }>;
 };
 
@@ -480,7 +500,7 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
   };
 
   const sites: QuickSites = {
-    async all() {
+    async list() {
       const response = await request<QuickSitesResponse>("/sites");
       return response.sites;
     },
@@ -491,7 +511,7 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
   };
 
   const files: QuickFiles = {
-    all() {
+    list() {
       return request<QuickFile[]>("/files");
     },
 
@@ -698,7 +718,7 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
       const subscribePath = `/db/collections/${encodedName}/subscribe`;
 
       return {
-        all() {
+        list() {
           return request<Array<T & QuickDocument>>(path);
         },
 
@@ -730,6 +750,13 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
         delete(id) {
           return request<T & QuickDocument>(`${path}/${encodeURIComponent(id)}`, {
             method: "DELETE",
+          });
+        },
+
+        search(options) {
+          return request<QuickCollectionSearchResponse<T>>(`${path}/search`, {
+            method: "POST",
+            body: JSON.stringify(options),
           });
         },
 

@@ -22,7 +22,7 @@ function now() {
 }
 
 export const collections = {
-  all(site: string, collection: string) {
+  list(site: string, collection: string) {
     return JsonDocuments.list(db, site, collection).map(parseRow);
   },
 

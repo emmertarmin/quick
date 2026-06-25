@@ -4,18 +4,18 @@ const quick = createQuickClient();
 const TODO_COLLECTION = "todos";
 const IMPLICIT_TOOL_NAMES = ["quick_datetime_get"];
 const REQUESTED_TOOL_NAMES = [
-  "quick_currentUser_get",
-  "quick_collection_all",
-  "quick_collection_get",
-  "quick_collection_search",
-  "quick_collection_create",
-  "quick_collection_update",
-  "quick_collection_delete",
+  "quick_user_get",
+  "quick_documents_list",
+  "quick_document_get",
+  "quick_documents_search",
+  "quick_document_create",
+  "quick_document_update",
+  "quick_document_delete",
 ];
 const DEFAULT_INSTRUCTIONS = `You are the messenger between the user and this app's todo list.
 
 The todo list lives in the Quick DB collection named "${TODO_COLLECTION}".
-Use the collection tools whenever the user asks about or asks to change todos. Read the current list before answering questions about it. Create or update documents when the user asks you to modify the list. If the user asks to delete a todo, mark it completed instead.
+Use the document tools whenever the user asks about or asks to change todos. Read the current list before answering questions about it. Create or update documents when the user asks you to modify the list. If the user asks to delete a todo, mark it completed instead.
 
 Todo documents should use this shape when possible:
 - title: string
@@ -227,7 +227,7 @@ function renderTodos(todos) {
 }
 
 async function refreshTodos() {
-  const todos = await todosCollection.all();
+  const todos = await todosCollection.list();
   todos.sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
   renderTodos(todos);
 }

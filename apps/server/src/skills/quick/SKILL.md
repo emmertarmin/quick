@@ -36,10 +36,10 @@ Base SDK features:
 
 - Auth/session: `quick.auth.session()`, `quick.auth.login()`, `quick.auth.logout()`.
 - Identity: `quick.identity.current()`.
-- DB: `quick.db.collection(name)` with `all/create/get/replace/update/delete/subscribe`.
-- Files: `quick.files.upload(file)`, `quick.files.all()`, `quick.files.delete(id)`.
+- DB: `quick.db.collection(name)` with `list/create/get/replace/update/delete/search/subscribe`.
+- Files: `quick.files.upload(file)`, `quick.files.list()`, `quick.files.delete(id)`.
 - Realtime: `quick.realtime.channel(name)` for events; `quick.realtime.presence(name)` for presence/cursors.
-- Sites: `quick.sites.all()`, `quick.sites.get(site)`.
+- Sites: `quick.sites.list()`, `quick.sites.get(site)`.
 - AI: `quick.ai.chat(...)`, `quick.ai.agent(...)`, `quick.ai.tools()`.
 
 Use DB for durable state. Use `collection.subscribe(...)` for DB-driven UI updates across users/tabs. Use realtime for ephemeral state: cursors, typing, game moves, live presence.
@@ -81,7 +81,7 @@ console.log(res.toolCalls); // optional executed tool calls
 console.log(res.transcript); // optional user/assistant/toolResult blocks
 ```
 
-Built-in agent tools include current date/time, current user, current app context, current-site DB collection reads/writes/search, uploaded file listing, current-site metadata, and cross-site discovery. Site-scoped tools require the current Quick app/site context. `quick_collection_search` supports broad text search plus a Mongo-inspired `filter` with dot paths and operators such as `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$regex`, `$and`, and `$or`.
+Built-in agent tools include current date/time, current user, current app context, current-site DB document reads/writes/search, uploaded file listing, current-site metadata, and cross-site discovery. Site-scoped tools require the current Quick app/site context. `quick_documents_search` supports broad text search plus a Mongo-inspired `filter` with dot paths and operators such as `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$exists`, `$regex`, `$and`, and `$or`.
 
 ## CLI
 
@@ -90,7 +90,10 @@ Built-in agent tools include current date/time, current user, current app contex
 - `quick auth status`
 - `quick init` or `quick init <path>`
 - `quick deploy` (uses `deploy.input` + `site` from `.quick.json`), `quick deploy .`, or `quick deploy . <site>`
+- `quick stats <site>` (use `--json` for machine-readable site stats)
 - `quick thumbnail capture` (uses `site` and thumbnail defaults from `.quick.json`) or `quick thumbnail capture <site>`
+- `quick thumbnail upload <site> <file>` to upload a prepared thumbnail image
+- `quick purge <site>` to permanently delete a site after interactive confirmation
 - `quick ai tools` to list available Quick AI agent tools for the configured remote
 - `quick ai tools --json` for machine-readable tool metadata
 - `quick ai tools --remote https://quick.example.com` to inspect a specific server

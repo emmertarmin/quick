@@ -193,7 +193,7 @@
     elements.sitesList.textContent = "Loading sites…";
 
     try {
-      renderSites(await quick.sites.all());
+      renderSites(await quick.sites.list());
     } catch (error) {
       elements.sitesList.innerHTML = `<p class="error">Could not load sites: ${error instanceof Error ? error.message : String(error)}</p>`;
     }

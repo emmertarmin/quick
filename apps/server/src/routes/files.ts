@@ -131,7 +131,7 @@ export function registerFileRoutes(app: OpenAPIHono) {
       return c.json(fileError("Missing or invalid trusted X-Quick-Site header"), 400);
     }
 
-    const files = collections.all(site, filesCollection).map(asQuickFileDocument).filter((file) => file !== undefined);
+    const files = collections.list(site, filesCollection).map(asQuickFileDocument).filter((file) => file !== undefined);
     return c.json(files, 200);
   });
 
