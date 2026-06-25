@@ -1,11 +1,11 @@
-import { Agent, type AgentMessage } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { createModels, type AssistantMessage, type Context as PiContext, type Message as PiMessage, type Usage } from "@earendil-works/pi-ai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
-import type { QuickAiAgentRequest, QuickAiAgentResponse, QuickAiAgentToolCall, QuickAiAgentTranscriptBlock, QuickAiAgentTranscriptMessage, QuickAiChatMessage, QuickAiChatRequest, QuickAiChatResponse, QuickAiToolsResponse } from "@quick/shared";
+import type { QuickAiAgentRequest, QuickAiAgentResponse, QuickAiAgentStreamEvent, QuickAiAgentToolCall, QuickAiAgentTranscriptBlock, QuickAiAgentTranscriptMessage, QuickAiChatMessage, QuickAiChatRequest, QuickAiChatResponse, QuickAiChatStreamEvent, QuickAiToolsResponse } from "@quick/shared";
 import { quickChatEnabled, quickChatModel, quickChatProvider } from "../config";
 import { createQuickAiTools, isQuickAiToolName, listQuickAiTools } from "../ai-tools";
-import { errorResponseSchema, quickAiAgentRequestSchema, quickAiAgentResponseSchema, quickAiChatRequestSchema, quickAiChatResponseSchema, quickAiToolsResponseSchema } from "../schemas";
+import { errorResponseSchema, quickAiAgentRequestSchema, quickAiAgentResponseSchema, quickAiAgentStreamEventSchema, quickAiChatRequestSchema, quickAiChatResponseSchema, quickAiChatStreamEventSchema, quickAiToolsResponseSchema } from "../schemas";
 import { readAuthSession } from "./auth";
 
 function aiError(message: string) {
@@ -151,6 +151,12 @@ function normalizedUsage(usage: Usage | undefined): QuickAiChatResponse["usage"]
   };
 }
 
+const sseEncoder = new TextEncoder();
+
+function sseEvent(name: string, data: unknown) {
+  return sseEncoder.encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
 function formatDate(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -213,45 +219,100 @@ function transcriptBlocks(content: unknown): QuickAiAgentTranscriptBlock[] {
   });
 }
 
+function transcriptMessage(message: AgentMessage): QuickAiAgentTranscriptMessage | undefined {
+  if (!message || typeof message !== "object" || !("role" in message)) {
+    return undefined;
+  }
+
+  if (message.role === "user") {
+    return { role: "user", content: transcriptBlocks(message.content) };
+  }
+
+  if (message.role === "assistant") {
+    return {
+      role: "assistant",
+      content: transcriptBlocks(message.content),
+      stopReason: message.stopReason,
+      errorMessage: message.errorMessage,
+    };
+  }
+
+  if (message.role === "toolResult") {
+    return {
+      role: "toolResult",
+      toolCallId: message.toolCallId,
+      toolName: message.toolName,
+      content: transcriptBlocks(message.content),
+      details: message.details,
+      isError: message.isError,
+    };
+  }
+
+  return undefined;
+}
+
 function agentTranscript(messages: AgentMessage[]): QuickAiAgentTranscriptMessage[] {
-  return messages.flatMap((message): QuickAiAgentTranscriptMessage[] => {
-    if (!message || typeof message !== "object" || !("role" in message)) {
-      return [];
-    }
-
-    if (message.role === "user") {
-      return [{ role: "user", content: transcriptBlocks(message.content) }];
-    }
-
-    if (message.role === "assistant") {
-      return [{
-        role: "assistant",
-        content: transcriptBlocks(message.content),
-        stopReason: message.stopReason,
-        errorMessage: message.errorMessage,
-      }];
-    }
-
-    if (message.role === "toolResult") {
-      return [{
-        role: "toolResult",
-        toolCallId: message.toolCallId,
-        toolName: message.toolName,
-        content: transcriptBlocks(message.content),
-        details: message.details,
-        isError: message.isError,
-      }];
-    }
-
-    return [];
+  return messages.flatMap((message) => {
+    const transcript = transcriptMessage(message);
+    return transcript ? [transcript] : [];
   });
+}
+
+function agentStreamEvent(event: AgentEvent): QuickAiAgentStreamEvent | undefined {
+  if (event.type === "message_start" || event.type === "message_update" || event.type === "message_end") {
+    const message = transcriptMessage(event.message);
+    if (!message) return undefined;
+
+    if (event.type === "message_update") {
+      const delta = event.assistantMessageEvent.type === "text_delta" ? event.assistantMessageEvent.delta : undefined;
+      return { type: event.type, message, delta };
+    }
+
+    return { type: event.type, message };
+  }
+
+  if (event.type === "tool_execution_start") {
+    return { type: "tool_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args };
+  }
+
+  if (event.type === "tool_execution_update") {
+    return { type: "tool_update", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args, partialResult: event.partialResult };
+  }
+
+  if (event.type === "tool_execution_end") {
+    return { type: "tool_end", toolCallId: event.toolCallId, toolName: event.toolName, result: event.result, isError: event.isError };
+  }
+
+  return undefined;
+}
+
+function agentResponse(agent: Agent, toolCalls: QuickAiAgentToolCall[]): QuickAiAgentResponse {
+  const message = latestAssistantMessage(agent.state.messages);
+
+  if (!message) {
+    throw new Error("Agent did not return an assistant message");
+  }
+
+  const output = textFromAssistantMessage(message);
+  return {
+    output,
+    message: {
+      role: "assistant",
+      content: output,
+    },
+    usage: normalizedUsage(message.usage),
+    toolCalls,
+    transcript: agentTranscript(agent.state.messages),
+  };
 }
 
 const apiErrorResponseSchema = errorResponseSchema.openapi("AiErrorResponse");
 const apiQuickAiAgentRequestSchema = quickAiAgentRequestSchema.openapi("QuickAiAgentRequest");
 const apiQuickAiAgentResponseSchema = quickAiAgentResponseSchema.openapi("QuickAiAgentResponse");
+const apiQuickAiAgentStreamEventSchema = quickAiAgentStreamEventSchema.openapi("QuickAiAgentStreamEvent");
 const apiQuickAiChatRequestSchema = quickAiChatRequestSchema.openapi("QuickAiChatRequest");
 const apiQuickAiChatResponseSchema = quickAiChatResponseSchema.openapi("QuickAiChatResponse");
+const apiQuickAiChatStreamEventSchema = quickAiChatStreamEventSchema.openapi("QuickAiChatStreamEvent");
 const apiQuickAiToolsResponseSchema = quickAiToolsResponseSchema.openapi("QuickAiToolsResponse");
 
 const errorJson = (description: string) => ({
@@ -383,28 +444,278 @@ export function registerAiRoutes(app: OpenAPIHono) {
 
       await agent.prompt(request.input);
 
-      const message = latestAssistantMessage(agent.state.messages);
-
-      if (!message) {
-        throw new Error("Agent did not return an assistant message");
-      }
-
-      const output = textFromAssistantMessage(message);
-      const response: QuickAiAgentResponse = {
-        output,
-        message: {
-          role: "assistant",
-          content: output,
-        },
-        usage: normalizedUsage(message.usage),
-        toolCalls,
-        transcript: agentTranscript(agent.state.messages),
-      };
-
-      return c.json(response, 200);
+      return c.json(agentResponse(agent, toolCalls), 200);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("[ai] agent failed", error);
+      return c.json(aiError(message), 500);
+    }
+  });
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/ai/agent/stream",
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: apiQuickAiAgentRequestSchema,
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "text/event-stream": {
+              schema: apiQuickAiAgentStreamEventSchema,
+            },
+          },
+          description: "Streaming Quick AI agent turn as Server-Sent Events.",
+        },
+        400: errorJson("Missing, invalid, or unsupported request data."),
+        401: errorJson("Authentication required."),
+        500: errorJson("AI provider or server configuration error."),
+        503: errorJson("Quick AI agent is disabled."),
+      },
+    }),
+    async (c) => {
+    if (!quickChatEnabled) {
+      return c.json(aiError("Quick AI agent is disabled"), 503);
+    }
+
+    if (!quickChatModel) {
+      return c.json(aiError("QUICK_CHAT_MODEL must be set"), 500);
+    }
+
+    if (quickChatProvider === "openrouter" && !process.env.OPENROUTER_API_KEY?.trim()) {
+      return c.json(aiError("OPENROUTER_API_KEY must be set for QUICK_CHAT_PROVIDER=openrouter"), 500);
+    }
+
+    const session = await readAuthSession(c);
+
+    if (!session) {
+      return c.json(aiError("Authentication required"), 401);
+    }
+
+    const request = parseAgentRequest(await c.req.json().catch(() => undefined));
+
+    if (!request) {
+      return c.json(aiError("Expected JSON body with non-empty input string, optional instructions string, and optional tools string array"), 400);
+    }
+
+    const requestedTools = request.tools ?? [];
+    const unknownTools = requestedTools.filter((name) => !isQuickAiToolName(name));
+
+    if (unknownTools.length > 0) {
+      return c.json(aiError(`Unknown Quick AI tool(s): ${unknownTools.join(", ")}`), 400);
+    }
+
+    try {
+      const collection = chatModels();
+      const model = collection.getModel(quickChatProvider, quickChatModel);
+
+      if (!model) {
+        return c.json(aiError(`Unknown ${quickChatProvider} chat model: ${quickChatModel}`), 500);
+      }
+
+      const toolCalls: QuickAiAgentToolCall[] = [];
+      const agent = new Agent({
+        initialState: {
+          systemPrompt: agentSystemPrompt(request.instructions),
+          model,
+          thinkingLevel: "off",
+          tools: createQuickAiTools({ c, user: session.user }, requestedTools),
+        },
+        streamFn: (model, context, options) => collection.streamSimple(model, context, options),
+        beforeToolCall: async ({ toolCall, args }) => {
+          console.log(`[ai] tool call ${toolCall.name}`, args);
+        },
+        afterToolCall: async ({ toolCall, args, isError }) => {
+          toolCalls.push({
+            name: toolCall.name,
+            input: args && typeof args === "object" && !Array.isArray(args) ? args as Record<string, unknown> : {},
+            isError,
+          });
+        },
+      });
+
+      const responseStream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          let closed = false;
+          const abort = () => agent.abort();
+
+          function send(event: QuickAiAgentStreamEvent) {
+            if (!closed) {
+              controller.enqueue(sseEvent(event.type, event));
+            }
+          }
+
+          const unsubscribe = agent.subscribe((event) => {
+            const quickEvent = agentStreamEvent(event);
+            if (quickEvent) {
+              send(quickEvent);
+            }
+          });
+
+          c.req.raw.signal.addEventListener("abort", abort, { once: true });
+
+          try {
+            await agent.prompt(request.input);
+            send({ type: "done", ...agentResponse(agent, toolCalls) });
+          } catch (error) {
+            if (!c.req.raw.signal.aborted) {
+              const message = error instanceof Error ? error.message : String(error);
+              console.error("[ai] agent stream failed", error);
+              send({ type: "error", error: message });
+            }
+          } finally {
+            closed = true;
+            unsubscribe();
+            c.req.raw.signal.removeEventListener("abort", abort);
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(responseStream, {
+        headers: {
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[ai] agent stream setup failed", error);
+      return c.json(aiError(message), 500);
+    }
+  });
+
+  app.openapi(
+    createRoute({
+      method: "post",
+      path: "/ai/chat/stream",
+      request: {
+        body: {
+          content: {
+            "application/json": {
+              schema: apiQuickAiChatRequestSchema,
+            },
+          },
+          required: true,
+        },
+      },
+      responses: {
+        200: {
+          content: {
+            "text/event-stream": {
+              schema: apiQuickAiChatStreamEventSchema,
+            },
+          },
+          description: "Streaming AI chat completion as Server-Sent Events.",
+        },
+        400: errorJson("Missing or invalid request data."),
+        401: errorJson("Authentication required."),
+        500: errorJson("AI provider or server configuration error."),
+        503: errorJson("Quick AI chat is disabled."),
+      },
+    }),
+    async (c) => {
+    if (!quickChatEnabled) {
+      return c.json(aiError("Quick AI chat is disabled"), 503);
+    }
+
+    if (!quickChatModel) {
+      return c.json(aiError("QUICK_CHAT_MODEL must be set"), 500);
+    }
+
+    if (quickChatProvider === "openrouter" && !process.env.OPENROUTER_API_KEY?.trim()) {
+      return c.json(aiError("OPENROUTER_API_KEY must be set for QUICK_CHAT_PROVIDER=openrouter"), 500);
+    }
+
+    const session = await readAuthSession(c);
+
+    if (!session) {
+      return c.json(aiError("Authentication required"), 401);
+    }
+
+    const request = parseChatRequest(await c.req.json().catch(() => undefined));
+
+    if (!request) {
+      return c.json(aiError("Expected JSON body with non-empty messages array"), 400);
+    }
+
+    try {
+      const collection = chatModels();
+      const model = collection.getModel(quickChatProvider, quickChatModel);
+
+      if (!model) {
+        return c.json(aiError(`Unknown ${quickChatProvider} chat model: ${quickChatModel}`), 500);
+      }
+
+      const providerStream = collection.stream(model, piMessages(request.messages), { signal: c.req.raw.signal });
+      let fullText = "";
+
+      const responseStream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          function send(event: QuickAiChatStreamEvent) {
+            controller.enqueue(sseEvent(event.type, event));
+          }
+
+          try {
+            for await (const event of providerStream) {
+              if (event.type === "text_delta") {
+                fullText += event.delta;
+                send({ type: "delta", delta: event.delta });
+                continue;
+              }
+
+              if (event.type === "done") {
+                const text = textFromAssistantMessage(event.message) || fullText;
+                send({
+                  type: "done",
+                  text,
+                  message: {
+                    role: "assistant",
+                    content: text,
+                  },
+                  usage: normalizedUsage(event.message.usage),
+                });
+                break;
+              }
+
+              if (event.type === "error") {
+                send({ type: "error", error: event.error.errorMessage ?? "AI chat stream failed" });
+                break;
+              }
+            }
+          } catch (error) {
+            if (!c.req.raw.signal.aborted) {
+              const message = error instanceof Error ? error.message : String(error);
+              console.error("[ai] chat stream failed", error);
+              send({ type: "error", error: message });
+            }
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(responseStream, {
+        headers: {
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[ai] chat stream setup failed", error);
       return c.json(aiError(message), 500);
     }
   });

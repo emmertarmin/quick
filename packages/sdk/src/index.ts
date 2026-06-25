@@ -2,9 +2,11 @@ import type {
   JsonBlob,
   QuickAiAgentRequest,
   QuickAiAgentResponse,
+  QuickAiAgentStreamEvent,
   QuickAiChatMessage,
   QuickAiChatRequest,
   QuickAiChatResponse,
+  QuickAiChatStreamEvent,
   QuickAiToolsResponse,
   QuickDocument,
   QuickLoginResponse,
@@ -18,6 +20,7 @@ export type {
   JsonBlob,
   QuickAiAgentRequest,
   QuickAiAgentResponse,
+  QuickAiAgentStreamEvent,
   QuickAiAgentTool,
   QuickAiAgentToolCall,
   QuickAiAgentTranscriptBlock,
@@ -25,6 +28,7 @@ export type {
   QuickAiChatMessage,
   QuickAiChatRequest,
   QuickAiChatResponse,
+  QuickAiChatStreamEvent,
   QuickAiToolsResponse,
   QuickAuthenticatedSession,
   QuickAnonymousSession,
@@ -68,9 +72,18 @@ export type QuickDatabase = {
 
 export type QuickAiChatInput = QuickAiChatMessage[] | QuickAiChatRequest;
 
+export type QuickAiStreamOptions = {
+  signal?: AbortSignal;
+};
+
+export type QuickAiChatStreamOptions = QuickAiStreamOptions;
+export type QuickAiAgentStreamOptions = QuickAiStreamOptions;
+
 export type QuickAi = {
   agent(request: QuickAiAgentRequest): Promise<QuickAiAgentResponse>;
+  agentStream(request: QuickAiAgentRequest, options?: QuickAiAgentStreamOptions): AsyncIterable<QuickAiAgentStreamEvent>;
   chat(messagesOrRequest: QuickAiChatInput): Promise<QuickAiChatResponse>;
+  chatStream(messagesOrRequest: QuickAiChatInput, options?: QuickAiChatStreamOptions): AsyncIterable<QuickAiChatStreamEvent>;
   tools(): Promise<QuickAiToolsResponse>;
 };
 
@@ -267,6 +280,53 @@ async function readResponseBody(response: Response) {
   }
 }
 
+function parseSseData(block: string) {
+  const dataLines = block
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart());
+
+  return dataLines.length > 0 ? dataLines.join("\n") : undefined;
+}
+
+async function* streamSseEvents<T>(response: Response): AsyncIterable<T> {
+  if (!response.body) {
+    throw new Error("Quick streaming response did not include a readable body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const normalized = buffer.replace(/\r\n/g, "\n");
+      const parts = normalized.split("\n\n");
+      buffer = parts.pop() ?? "";
+
+      for (const part of parts) {
+        const data = parseSseData(part);
+        if (data) {
+          yield JSON.parse(data) as T;
+        }
+      }
+
+      if (done) {
+        break;
+      }
+    }
+
+    const data = parseSseData(buffer);
+    if (data) {
+      yield JSON.parse(data) as T;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export function createQuickClient(options: QuickClientOptions = {}): QuickClient {
   const baseUrl = options.baseUrl ?? "/api";
 
@@ -295,6 +355,35 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
     return response.json() as Promise<T>;
   }
 
+  async function requestStream<T>(path: string, init: RequestInit = {}): Promise<AsyncIterable<T>> {
+    const headers = new Headers(init.headers);
+
+    if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+
+    if (!headers.has("Accept")) {
+      headers.set("Accept", "text/event-stream");
+    }
+
+    const response = await fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new QuickRequestError({
+        body: await readResponseBody(response),
+        method: init.method ?? "GET",
+        path,
+        status: response.status,
+        statusText: response.statusText,
+      });
+    }
+
+    return streamSseEvents<T>(response);
+  }
+
   const anonymousSession: QuickSessionResponse = {
     authenticated: false,
     user: null,
@@ -308,6 +397,18 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
       });
     },
 
+    async *agentStream(body, options = {}) {
+      const events = await requestStream<QuickAiAgentStreamEvent>("/ai/agent/stream", {
+        method: "POST",
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
+
+      for await (const event of events) {
+        yield event;
+      }
+    },
+
     chat(messagesOrRequest) {
       const body = Array.isArray(messagesOrRequest) ? { messages: messagesOrRequest } : messagesOrRequest;
 
@@ -315,6 +416,19 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
         method: "POST",
         body: JSON.stringify(body),
       });
+    },
+
+    async *chatStream(messagesOrRequest, options = {}) {
+      const body = Array.isArray(messagesOrRequest) ? { messages: messagesOrRequest } : messagesOrRequest;
+      const events = await requestStream<QuickAiChatStreamEvent>("/ai/chat/stream", {
+        method: "POST",
+        body: JSON.stringify(body),
+        signal: options.signal,
+      });
+
+      for await (const event of events) {
+        yield event;
+      }
     },
 
     tools() {

@@ -100,6 +100,12 @@ export const quickAiChatResponseSchema = z.object({
   usage: quickAiChatUsageSchema.optional(),
 });
 
+export const quickAiChatStreamEventSchema = z.union([
+  z.object({ type: z.literal("delta"), delta: z.string() }),
+  z.object({ type: z.literal("done"), text: z.string(), message: quickAiChatMessageSchema, usage: quickAiChatUsageSchema.optional() }),
+  z.object({ type: z.literal("error"), error: z.string() }),
+]);
+
 export const quickAiAgentToolSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -143,6 +149,17 @@ export const quickAiAgentResponseSchema = z.object({
   toolCalls: z.array(quickAiAgentToolCallSchema).optional(),
   transcript: z.array(quickAiAgentTranscriptMessageSchema).optional(),
 });
+
+export const quickAiAgentStreamEventSchema = z.union([
+  z.object({ type: z.literal("message_start"), message: quickAiAgentTranscriptMessageSchema }),
+  z.object({ type: z.literal("message_update"), message: quickAiAgentTranscriptMessageSchema, delta: z.string().optional() }),
+  z.object({ type: z.literal("message_end"), message: quickAiAgentTranscriptMessageSchema }),
+  z.object({ type: z.literal("tool_start"), toolCallId: z.string(), toolName: z.string(), args: z.unknown() }),
+  z.object({ type: z.literal("tool_update"), toolCallId: z.string(), toolName: z.string(), args: z.unknown(), partialResult: z.unknown() }),
+  z.object({ type: z.literal("tool_end"), toolCallId: z.string(), toolName: z.string(), result: z.unknown(), isError: z.boolean() }),
+  quickAiAgentResponseSchema.extend({ type: z.literal("done") }),
+  z.object({ type: z.literal("error"), error: z.string() }),
+]);
 
 export const siteHeaderSchema = z.object({
   "X-Quick-Site": z.string().optional(),

@@ -127,19 +127,43 @@
         renderConversation();
 
         const messages = systemPrompt ? [{ role: "system", content: systemPrompt }, ...history] : [...history];
+        const assistantMessage = { role: "assistant", content: "" };
 
         setGenerating(true);
-        status.textContent = "Thinking...";
+        status.textContent = "Streaming response...";
+        history.push(assistantMessage);
+        renderConversation();
 
         try {
-          const res = await quick.ai.chat(messages);
-          history.push(res.message);
-          renderConversation();
-          status.textContent = `${history.length} message(s) in memory.`;
+          let streamedCharacters = 0;
+
+          for await (const event of quick.ai.chatStream(messages)) {
+            if (event.type === "delta") {
+              assistantMessage.content += event.delta;
+              streamedCharacters += event.delta.length;
+              renderConversation();
+              status.textContent = `Streaming response... ${streamedCharacters} character(s).`;
+              continue;
+            }
+
+            if (event.type === "done") {
+              assistantMessage.content = event.message.content;
+              renderConversation();
+              status.textContent = `${history.length} message(s) in memory.`;
+              continue;
+            }
+
+            if (event.type === "error") {
+              throw new Error(event.error);
+            }
+          }
         } catch (error) {
           console.error(error);
           status.textContent = error instanceof Error ? error.message : String(error);
-          history.pop();
+          const assistantIndex = history.indexOf(assistantMessage);
+          if (assistantIndex !== -1) history.splice(assistantIndex, 1);
+          const userIndex = history.indexOf(userMessage);
+          if (userIndex !== -1) history.splice(userIndex, 1);
           renderConversation();
         } finally {
           setGenerating(false);

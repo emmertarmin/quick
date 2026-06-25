@@ -77,6 +77,11 @@ export type QuickAiChatResponse = {
   usage?: QuickAiChatUsage;
 };
 
+export type QuickAiChatStreamEvent =
+  | { type: "delta"; delta: string }
+  | { type: "done"; text: string; message: QuickAiChatMessage; usage?: QuickAiChatUsage }
+  | { type: "error"; error: string };
+
 export type QuickAiAgentTool = {
   name: string;
   description: string;
@@ -118,3 +123,13 @@ export type QuickAiAgentResponse = {
   toolCalls?: QuickAiAgentToolCall[];
   transcript?: QuickAiAgentTranscriptMessage[];
 };
+
+export type QuickAiAgentStreamEvent =
+  | { type: "message_start"; message: QuickAiAgentTranscriptMessage }
+  | { type: "message_update"; message: QuickAiAgentTranscriptMessage; delta?: string }
+  | { type: "message_end"; message: QuickAiAgentTranscriptMessage }
+  | { type: "tool_start"; toolCallId: string; toolName: string; args: unknown }
+  | { type: "tool_update"; toolCallId: string; toolName: string; args: unknown; partialResult: unknown }
+  | { type: "tool_end"; toolCallId: string; toolName: string; result: unknown; isError: boolean }
+  | ({ type: "done" } & QuickAiAgentResponse)
+  | { type: "error"; error: string };
