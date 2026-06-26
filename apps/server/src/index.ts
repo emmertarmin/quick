@@ -66,6 +66,7 @@ export { app };
 if (import.meta.main) {
   Bun.serve({
     port,
+    idleTimeout: 0,
     fetch: createPublicFetch(app),
     websocket: websocket as Bun.WebSocketHandler<unknown>,
   });
