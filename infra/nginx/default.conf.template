@@ -1,6 +1,6 @@
 map $http_upgrade $quick_connection_upgrade {
   default upgrade;
-  '' close;
+  '' '';
 }
 
 server {
@@ -28,5 +28,11 @@ server {
     proxy_set_header X-Forwarded-Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # Keep long-lived streams (SSE/EventSource and WebSockets) open.
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 1h;
+    proxy_send_timeout 1h;
   }
 }
