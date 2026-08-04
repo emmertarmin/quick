@@ -12,6 +12,7 @@ import { registerSkillRoutes } from "./routes/skills";
 import { registerSiteRoutes } from "./routes/sites";
 import { registerSiteStatsRoutes } from "./routes/site-stats";
 import { registerRealtimeRoutes } from "./routes/realtime";
+import { registerNetRoutes } from "./routes/net";
 import { port, publicApiBase } from "./config";
 import { createPublicFetch } from "./public";
 
@@ -47,6 +48,7 @@ registerSkillRoutes(app);
 registerSchemaRoutes(app);
 registerCollectionRoutes(app);
 registerFileRoutes(app);
+registerNetRoutes(app);
 registerSiteStatsRoutes(app);
 registerSiteRoutes(app);
 registerRealtimeRoutes(app);

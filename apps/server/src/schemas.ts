@@ -74,6 +74,21 @@ export const quickFileSchema = z.object({
   updated_at: z.string(),
 });
 
+export const quickNetFetchRequestSchema = z.object({
+  url: z.string().min(1).openapi({ description: "Absolute public HTTPS URL on port 443. URL credentials are forbidden." }),
+});
+
+export const quickNetFetchResponseSchema = z.object({
+  url: z.string().openapi({ description: "Final validated URL after at most three redirects." }),
+  status: z.number().int().min(100).max(599).openapi({ description: "Upstream HTTP status, including upstream 4xx and 5xx responses." }),
+  headers: z.object({
+    "content-type": z.string().optional(),
+    etag: z.string().optional(),
+    "last-modified": z.string().optional(),
+  }),
+  body: z.string().openapi({ description: "Decoded text body, limited to 1 MiB before JSON encoding." }),
+});
+
 export const jsonSchemaSchema = z.object({}).catchall(z.unknown());
 
 export const quickAiChatMessageSchema = z.object({

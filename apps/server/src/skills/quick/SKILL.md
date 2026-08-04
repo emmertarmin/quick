@@ -1,13 +1,13 @@
 ---
 name: quick
-description: Build, initialize, and deploy Quick static browser apps using the Quick SDK and CLI. Use when working in a Quick site, creating internal static apps, using quick.db, quick.files, quick.realtime, quick.identity, quick.ai, or deploying with quick deploy.
+description: Build, initialize, and deploy Quick static browser apps using the Quick SDK and CLI. Use when working in a Quick site, creating internal static apps, using quick.db, quick.files, quick.net, quick.realtime, quick.identity, quick.ai, or deploying with quick deploy.
 ---
 
 # Quick
 
 Quick: static-first internal app platform. A folder of HTML/CSS/JS/assets becomes a site. Shared platform APIs replace per-app infra.
 
-Build browser-only apps. No custom backend, server process, cron, migrations, separate auth, AI provider secrets, or client secrets. Use plain web files + `/quick.js`. Platform handles auth, identity, persistence, files, realtime, and server-side AI calls.
+Build browser-only apps. No custom backend, server process, cron, migrations, separate auth, AI provider secrets, or client secrets. Use plain web files + `/quick.js`. Platform handles auth, identity, persistence, files, realtime, guarded public-resource fetches, and server-side AI calls.
 
 ## Defaults
 
@@ -39,10 +39,22 @@ Base SDK features:
 - DB: `quick.db.collection(name)` with `list/create/get/replace/update/delete/search/subscribe`.
 - Files: `quick.files.upload(file)`, `quick.files.list()`, `quick.files.delete(id)`.
 - Realtime: `quick.realtime.channel(name)` for events; `quick.realtime.presence(name)` for presence/cursors.
+- Network: `quick.net.fetch(httpsUrl)` for anonymous, server-side retrieval of constrained public text resources when browser CORS blocks direct access.
 - Sites: `quick.sites.list()`, `quick.sites.get(site)`.
 - AI: `quick.ai.chat(...)`, `quick.ai.agent(...)`, `quick.ai.tools()`.
 
 Use DB for durable state. Use `collection.subscribe(...)` for DB-driven UI updates across users/tabs. Use realtime for ephemeral state: cursors, typing, game moves, live presence.
+
+## Network SDK
+
+Use `quick.net.fetch(url)` only for official public HTTPS text resources that cannot be fetched directly because of browser CORS:
+
+```js
+const result = await quick.net.fetch("https://example.org/feed.xml");
+console.log(result.url, result.status, result.headers, result.body);
+```
+
+It requires login and site context. V1 is GET-only, HTTPS/443-only, anonymous upstream, redirect/DNS revalidated, size/time/rate limited, and restricted to RSS/XML, JSON, CSV, ICS, HTML, and plain text. It never forwards browser auth or identity and never exposes `Set-Cookie`. Upstream 4xx/5xx statuses are returned in `result.status`; policy/network failures throw `QuickRequestError`. Treat the returned text as untrusted and sanitize before DOM insertion. Do not use it as a general proxy or to access private/internal resources.
 
 ## AI SDK
 

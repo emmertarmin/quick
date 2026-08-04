@@ -27,6 +27,7 @@ That is the point: ask for the tool, deploy the tool, use the tool.
 - **Identity included** — know who is using the app without turning every prototype into an auth project.
 - **Files included** — add uploads and stable public site URLs with the SDK.
 - **AI chat without browser secrets** — call `quick.ai.chat(...)` through server-side provider configuration.
+- **Guarded public text fetches** — use `quick.net.fetch(...)` for official HTTPS resources blocked by browser CORS.
 - **Agent-friendly shape** — Quick is designed for small apps generated and refined by coding agents.
 
 For the full product story and API overview, start with [[docs/index|the Quick docs]].

@@ -51,6 +51,21 @@ export type QuickSitesResponse = {
   sites: QuickSite[];
 };
 
+export type QuickNetFetchRequest = {
+  url: string;
+};
+
+export type QuickNetFetchResponse = {
+  url: string;
+  status: number;
+  headers: {
+    "content-type"?: string;
+    etag?: string;
+    "last-modified"?: string;
+  };
+  body: string;
+};
+
 export type QuickAiChatRole = "system" | "user" | "assistant";
 
 export type QuickAiChatMessage = {

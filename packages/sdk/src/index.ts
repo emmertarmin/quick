@@ -10,6 +10,7 @@ import type {
   QuickAiToolsResponse,
   QuickDocument,
   QuickLoginResponse,
+  QuickNetFetchResponse,
   QuickSessionResponse,
   QuickSite,
   QuickSitesResponse,
@@ -35,6 +36,8 @@ export type {
   QuickDocument,
   QuickLoginResponse,
   QuickLoginStartResponse,
+  QuickNetFetchRequest,
+  QuickNetFetchResponse,
   QuickSessionResponse,
   QuickSite,
   QuickSitesResponse,
@@ -138,6 +141,10 @@ export type QuickSites = {
   get(site: string): Promise<QuickSite | { site: string; exists: false; url: string; hasIndex: false }>;
 };
 
+export type QuickNet = {
+  fetch(url: string | URL): Promise<QuickNetFetchResponse>;
+};
+
 export type QuickRealtimeMessage<T = unknown> = {
   type: "event";
   event: string;
@@ -189,6 +196,7 @@ export type QuickClient = {
   db: QuickDatabase;
   files: QuickFiles;
   identity: QuickIdentity;
+  net: QuickNet;
   realtime: QuickRealtime;
   sites: QuickSites;
 };
@@ -532,6 +540,15 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
     },
   };
 
+  const net: QuickNet = {
+    fetch(url) {
+      return request<QuickNetFetchResponse>("/net/fetch", {
+        method: "POST",
+        body: JSON.stringify({ url: url.toString() }),
+      });
+    },
+  };
+
   const realtime: QuickRealtime = {
     channel(name) {
       if (!("WebSocket" in globalThis)) {
@@ -792,5 +809,5 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
     },
   };
 
-  return { ai, auth, db, files, identity, realtime, sites };
+  return { ai, auth, db, files, identity, net, realtime, sites };
 }

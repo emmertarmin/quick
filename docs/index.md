@@ -94,6 +94,19 @@ const res = await quick.ai.chat([{ role: "user", content: "Summarize my tasks" }
 
 Quick checks the user's session and forwards the request through the server-side AI provider configuration. Replies can be awaited in one call with `quick.ai.chat(...)` or streamed token by token with `quick.ai.chatStream(...)`. For tool-using turns, `quick.ai.agent(...)` and `quick.ai.agentStream(...)` run an agent against a whitelisted array of Quick-native tool names so it can read and write your site's collections. See the [SDK](./sdk/) for details.
 
+### Guarded public-resource fetches
+
+When browser CORS blocks an official public feed, calendar, JSON endpoint, CSV file, or web page, Quick can retrieve its text without becoming an open proxy:
+
+<div class="code-title">index.html</div>
+
+```js
+const feed = await quick.net.fetch("https://example.org/feed.xml");
+console.log(feed.status, feed.body);
+```
+
+The authenticated, site-scoped capability accepts only HTTPS port 443 resources, performs anonymous GET requests, blocks non-public and Quick infrastructure addresses, revalidates redirects, and enforces strict time, size, format, rate, and concurrency limits. See the [SDK](./sdk/#network-fetch) for the response shape and security model.
+
 ### Public site files
 
 Give your app uploads with one call:

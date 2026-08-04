@@ -235,7 +235,7 @@ const quickNativeToolFactories: QuickAiToolFactory[] = [
         url: ctx.c.req.url,
         referer: ctx.c.req.header("Referer") ?? null,
         apiBase: "/api",
-        features: ["auth", "identity", "ai", "db", "files", "realtime", "sites"],
+        features: ["auth", "identity", "ai", "db", "files", "net", "realtime", "sites"],
       };
     },
   },

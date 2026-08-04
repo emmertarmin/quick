@@ -39,6 +39,7 @@ The client exposes:
 - `quick.ai`
 - `quick.db`
 - `quick.files`
+- `quick.net`
 - `quick.realtime`
 - `quick.sites`
 
@@ -376,6 +377,29 @@ Uploaded file metadata includes:
 - `updated_at`
 
 The returned `url` is intended to be used directly from the same Quick site.
+
+## Network fetch
+
+Use `quick.net.fetch(...)` when a public resource is readable on the web but browser CORS prevents a direct request:
+
+<div class="code-title">index.html</div>
+
+```js
+const response = await quick.net.fetch("https://example.org/feed.xml");
+
+console.log(response.url);             // final URL after redirects
+console.log(response.status);          // upstream status, including 4xx/5xx
+console.log(response.headers.etag);    // safe response-header allowlist
+console.log(response.body);            // text
+```
+
+The call requires an authenticated Quick session and a deployed-site context. It sends `POST /api/net/fetch` to Quick, but Quick makes only an anonymous upstream `GET`. No browser cookies, authorization, user/site identity, email, forwarded IP headers, or other request data are sent upstream. Upstream `Set-Cookie` is never returned.
+
+This is deliberately not a general proxy. V1 permits only HTTPS on port 443, rejects URL credentials, validates every resolved address, manually follows at most three redirects while repeating all checks, and blocks Quick hosts/addresses plus loopback, private, link-local, multicast, documentation, reserved, and other special-use IPv4/IPv6 space. A hop is connected to a validated numeric address while TLS SNI and certificate verification use the requested hostname, which closes the ordinary DNS-rebinding gap between validation and connection. Requests have a 10-second total timeout, a 1 MiB response limit, per-user/site rate and concurrency limits, and a server-wide concurrency limit.
+
+Allowed response formats are RSS/Atom/XML, JSON (including `+json`), CSV, ICS (`text/calendar`), HTML, and plain text. Missing/unsupported content types, compressed responses, invalid declared text, and binary formats are rejected. The result exposes only `content-type`, `etag`, and `last-modified`. Upstream HTTP errors remain successful SDK results with their upstream `status`; Quick policy/network errors throw `QuickRequestError`.
+
+Security limitations: these controls validate the network destination, not the semantics of a public service (a public endpoint could itself relay content). DNS and Quick infrastructure addresses can change after a completed request, but every new request and redirect is resolved and pinned again; all returned addresses must be public. Publicly routed infrastructure that is neither advertised by the configured Quick domain nor present on a local interface cannot be identified automatically. Treat returned HTML/XML/text as untrusted input and do not inject it into the DOM without appropriate sanitization.
 
 ## Sites
 
