@@ -2,6 +2,7 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createRoute, type OpenAPIHono } from "@hono/zod-openapi";
 import type { QuickNetFetchResponse } from "@quick/shared";
+import { bodyLimit } from "hono/body-limit";
 import { quickDomain, sitesRoot } from "../config";
 import { NetFetchError, createNetFetchLimiter, fetchPublicTextResource } from "../net-fetch";
 import { errorResponseSchema, quickNetFetchRequestSchema, quickNetFetchResponseSchema, siteHeaderSchema } from "../schemas";
@@ -19,37 +20,6 @@ async function isDeployedSite(site: string) {
   return Boolean((await stat(join(sitesRoot, site, "index.html")).catch(() => undefined))?.isFile());
 }
 
-async function requestBody(c: { req: { header(name: string): string | undefined; raw: Request } }) {
-  const declared = Number(c.req.header("Content-Length"));
-  if (Number.isFinite(declared) && declared > maxRequestBytes) throw new NetFetchError("Request body is too large", 413);
-  const reader = c.req.raw.body?.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  if (reader) {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxRequestBytes) {
-        await reader.cancel();
-        throw new NetFetchError("Request body is too large", 413);
-      }
-      chunks.push(value);
-    }
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
-  } catch {
-    throw new NetFetchError("Expected JSON body with a URL string", 400);
-  }
-}
-
 const apiErrorSchema = errorResponseSchema.openapi("NetFetchErrorResponse");
 const apiRequestSchema = quickNetFetchRequestSchema.openapi("QuickNetFetchRequest");
 const apiResponseSchema = quickNetFetchResponseSchema.openapi("QuickNetFetchResponse");
@@ -61,11 +31,22 @@ const errorJson = (description: string) => ({
   description,
 });
 
-export function registerNetRoutes(app: OpenAPIHono) {
+type NetRouteDependencies = {
+  isDeployedSite: typeof isDeployedSite;
+  readAuthSession: typeof readAuthSession;
+  fetchPublicTextResource: typeof fetchPublicTextResource;
+};
+
+export function registerNetRoutes(app: OpenAPIHono, overrides: Partial<NetRouteDependencies> = {}) {
+  const dependencies: NetRouteDependencies = { isDeployedSite, readAuthSession, fetchPublicTextResource, ...overrides };
   app.openapi(
     createRoute({
       method: "post",
       path: "/net/fetch",
+      middleware: bodyLimit({
+        maxSize: maxRequestBytes,
+        onError: (c) => c.json(netError("Request body is too large"), 413),
+      }),
       request: {
         headers: apiSiteHeaderSchema,
         body: { content: { "application/json": { schema: apiRequestSchema } }, required: true },
@@ -89,18 +70,18 @@ export function registerNetRoutes(app: OpenAPIHono) {
     async (c) => {
       const site = c.req.header("X-Quick-Site")?.trim();
       if (!site || !siteNamePattern.test(site)) return c.json(netError("A valid Quick site context is required"), 400);
-      if (!await isDeployedSite(site)) return c.json(netError("A deployed Quick site context is required"), 403);
-      const session = await readAuthSession(c);
+      if (!await dependencies.isDeployedSite(site)) return c.json(netError("A deployed Quick site context is required"), 403);
+      const session = await dependencies.readAuthSession(c);
       if (!session) return c.json(netError("Authentication required"), 401);
 
       let release: (() => void) | undefined;
       try {
         release = limiter.acquire(`${site}\n${session.user.id}`);
-        const body = await requestBody(c) as { url?: unknown };
-        if (!body || typeof body !== "object" || typeof body.url !== "string" || !body.url.trim()) {
+        const body = c.req.valid("json");
+        if (!body.url.trim()) {
           return c.json(netError("Expected JSON body with a non-empty URL string"), 400);
         }
-        const response: QuickNetFetchResponse = await fetchPublicTextResource(body.url, quickDomain);
+        const response: QuickNetFetchResponse = await dependencies.fetchPublicTextResource(body.url, quickDomain);
         return c.json(response, 200);
       } catch (error) {
         if (error instanceof NetFetchError) return c.json(netError(error.message), error.status);
