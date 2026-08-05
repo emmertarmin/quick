@@ -3,9 +3,9 @@ import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
 
-export const NET_FETCH_MAX_BYTES = 1024 * 1024;
+export const NET_FETCH_MAX_BYTES = 10 * 1024 * 1024;
 export const NET_FETCH_MAX_REDIRECTS = 3;
-export const NET_FETCH_TIMEOUT_MS = 10_000;
+export const NET_FETCH_TIMEOUT_MS = 30_000;
 
 export type NetFetchHeaders = {
   "content-type"?: string;

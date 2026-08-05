@@ -86,7 +86,7 @@ export const quickNetFetchResponseSchema = z.object({
     etag: z.string().optional(),
     "last-modified": z.string().optional(),
   }),
-  body: z.string().openapi({ description: "Decoded text body, limited to 1 MiB before JSON encoding." }),
+  body: z.string().openapi({ description: "Decoded text body, limited to 10 MiB before JSON encoding." }),
 });
 
 export const jsonSchemaSchema = z.object({}).catchall(z.unknown());
