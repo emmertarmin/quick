@@ -16,6 +16,7 @@ type ApiUsage = {
   usesAuth: boolean;
   usesIdentity: boolean;
   usesFiles: boolean;
+  usesJev: boolean;
   usesNet: boolean;
   usesRealtime: boolean;
   collections: string[];
@@ -84,6 +85,7 @@ function detectApiUsage(text: string, usage: ApiUsage) {
   if (/\bquick\.auth\b/.test(text)) usage.usesAuth = true;
   if (/\bquick\.identity\b/.test(text)) usage.usesIdentity = true;
   if (/\bquick\.files\b/.test(text)) usage.usesFiles = true;
+  if (/\bquick\.jev\b/.test(text)) usage.usesJev = true;
   if (/\bquick\.net\b/.test(text)) usage.usesNet = true;
   if (/\bquick\.realtime\b/.test(text)) usage.usesRealtime = true;
 
@@ -105,7 +107,7 @@ function uniqSorted(values: string[]) {
 async function sourceStats(site: string, top: number) {
   const root = join(sitesRoot, site);
   const exists = Boolean(await stat(root).catch(() => undefined));
-  const emptyUsage: ApiUsage = { sdkImport: false, usesAuth: false, usesIdentity: false, usesFiles: false, usesNet: false, usesRealtime: false, collections: [], realtimeChannels: [], realtimePresence: [] };
+  const emptyUsage: ApiUsage = { sdkImport: false, usesAuth: false, usesIdentity: false, usesFiles: false, usesJev: false, usesNet: false, usesRealtime: false, collections: [], realtimeChannels: [], realtimePresence: [] };
 
   if (!exists) {
     return { fileCount: 0, directoryCount: 0, totalBytes: 0, textFileCount: 0, binaryFileCount: 0, lineCount: 0, extensions: [], largestFiles: [], apiUsage: emptyUsage };

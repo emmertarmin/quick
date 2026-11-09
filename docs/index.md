@@ -94,6 +94,24 @@ const res = await quick.ai.chat([{ role: "user", content: "Summarize my tasks" }
 
 Quick checks the user's session and forwards the request through the server-side AI provider configuration. Replies can be awaited in one call with `quick.ai.chat(...)` or streamed token by token with `quick.ai.chatStream(...)`. For tool-using turns, `quick.ai.agent(...)` and `quick.ai.agentStream(...)` run an agent against a whitelisted array of Quick-native tool names so it can read and write your site's collections. See the [SDK](./sdk/) for details.
 
+### Structured classifications
+
+When you need a typed decision rather than prose, ask Jev a bounded set of questions:
+
+<div class="code-title">index.html</div>
+
+```js
+const { answers } = await quick.jev.classify({
+  state: { message: "Deploy failed on the second test." },
+  questions: {
+    severity: { type: "choice", instructions: "How severe?", criteria: { low: "Low", medium: "Medium", high: "High" } },
+  },
+});
+console.log(answers.severity.choice);
+```
+
+`quick.jev.classify(...)` returns choice, score, and yes/no answers, requires a signed-in user and deployed site, and keeps the Jev provider configuration server-side. Your `state` is sent to the configured provider, so keep secrets out of it. See the [SDK](./sdk/#classification-jev) for limits and errors.
+
 ### Guarded public-resource fetches
 
 When browser CORS blocks an official public feed, calendar, JSON endpoint, CSV file, or web page, Quick can retrieve its text without becoming an open proxy:

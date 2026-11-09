@@ -39,6 +39,7 @@ The client exposes:
 - `quick.ai`
 - `quick.db`
 - `quick.files`
+- `quick.jev`
 - `quick.net`
 - `quick.realtime`
 - `quick.sites`
@@ -400,6 +401,42 @@ This is deliberately not a general proxy. V1 permits only HTTPS on port 443, rej
 Allowed response formats are RSS/Atom/XML, JSON (including `+json`), CSV, ICS (`text/calendar`), HTML, and plain text. Missing/unsupported content types, compressed responses, invalid declared text, and binary formats are rejected. The result exposes only `content-type`, `etag`, and `last-modified`. Upstream HTTP errors remain successful SDK results with their upstream `status`; Quick policy/network errors throw `QuickRequestError`.
 
 Security limitations: these controls validate the network destination, not the semantics of a public service (a public endpoint could itself relay content). DNS and Quick infrastructure addresses can change after a completed request, but every new request and redirect is resolved and pinned again; all returned addresses must be public. Publicly routed infrastructure that is neither advertised by the configured Quick domain nor present on a local interface cannot be identified automatically. Treat returned HTML/XML/text as untrusted input and do not inject it into the DOM without appropriate sanitization.
+
+## Classification (Jev)
+
+Use `quick.jev.classify(...)` when an app needs typed classifications instead of free-form chat. Quick sends your state and questions to its server-side Jev provider and returns one structured answer per question:
+
+<div class="code-title">index.html</div>
+
+```js
+const result = await quick.jev.classify({
+  state: { message: "The deploy finished but two tests failed." },
+  questions: {
+    sentiment: {
+      type: "choice",
+      instructions: "What is the overall sentiment?",
+      criteria: { positive: "Clearly positive", neutral: "Mixed or factual", negative: "Clearly negative" },
+    },
+    urgency: { type: "score", instructions: "How urgent is this?", criteria: ["not urgent", "soon", "now"] },
+    actionable: {
+      type: "bool",
+      instructions: "Does this require an action?",
+      criteria: { true: "Needs action", false: "No action needed" },
+    },
+  },
+});
+
+console.log(result.model);
+console.log(result.answers.sentiment);  // { type: "choice", choice: "negative", probabilities: { ... }, confidence: 0.82 }
+console.log(result.answers.urgency);    // { type: "score", score: 0.66, confidence: 0.71 }
+console.log(result.answers.actionable); // { type: "bool", probability: 0.9 }
+```
+
+`state` is any JSON object the classifier should consider. Each entry in `questions` is one of three types: `choice` with 2-32 named options, `score` with 2-10 ordered levels, or `bool` with `true`/`false` criteria. Question ids and choice keys must match `^[A-Za-z][A-Za-z0-9_-]{0,63}$`, instructions may be up to 2000 characters, and each criterion text up to 1000 characters. A request may contain 1-16 questions, its JSON body is limited to 64 KiB, and `state` nesting depth is limited to 32 levels. Unknown fields (including images, `model`, or API keys) are rejected.
+
+The call requires an authenticated Quick session and a deployed-site context, and is rate limited per user/site and per site, with bounded concurrency. It sends `POST /api/jev/classify` to Quick; Quick's Jev configuration and API key stay on the server and are never returned to the browser. Quick applies a 20-second timeout and a 256 KiB upstream response limit, and validates every answer against the requested question before returning it. Failures throw `QuickRequestError`: `401` without a session, `403` without a deployed site, `413` for oversized bodies, `429` when rate or concurrency limits are hit, `502` for upstream or invalid upstream responses, `503` when Jev is not configured, and `504` on timeout.
+
+Privacy: your `state` and questions leave Quick and are sent to TypeSafe, the configured Jev provider. Do not put secrets, credentials, or data you are not allowed to share with that provider into `state`. No browser cookies, authorization headers, user identity, or forwarded IP headers are forwarded along with the classification request. Answers are model output; treat them as untrusted hints and validate before acting on them.
 
 ## Sites
 

@@ -9,6 +9,8 @@ import type {
   QuickAiChatStreamEvent,
   QuickAiToolsResponse,
   QuickDocument,
+  QuickJevClassifyRequest,
+  QuickJevClassifyResponse,
   QuickLoginResponse,
   QuickNetFetchResponse,
   QuickSessionResponse,
@@ -19,6 +21,7 @@ import type {
 
 export type {
   JsonBlob,
+  JsonValue,
   QuickAiAgentRequest,
   QuickAiAgentResponse,
   QuickAiAgentStreamEvent,
@@ -34,6 +37,16 @@ export type {
   QuickAuthenticatedSession,
   QuickAnonymousSession,
   QuickDocument,
+  QuickJevAnswer,
+  QuickJevBoolAnswer,
+  QuickJevBoolQuestion,
+  QuickJevChoiceAnswer,
+  QuickJevChoiceQuestion,
+  QuickJevClassifyRequest,
+  QuickJevClassifyResponse,
+  QuickJevQuestion,
+  QuickJevScoreAnswer,
+  QuickJevScoreQuestion,
   QuickLoginResponse,
   QuickLoginStartResponse,
   QuickNetFetchRequest,
@@ -145,6 +158,10 @@ export type QuickNet = {
   fetch(url: string | URL): Promise<QuickNetFetchResponse>;
 };
 
+export type QuickJev = {
+  classify(request: QuickJevClassifyRequest): Promise<QuickJevClassifyResponse>;
+};
+
 export type QuickRealtimeMessage<T = unknown> = {
   type: "event";
   event: string;
@@ -196,6 +213,7 @@ export type QuickClient = {
   db: QuickDatabase;
   files: QuickFiles;
   identity: QuickIdentity;
+  jev: QuickJev;
   net: QuickNet;
   realtime: QuickRealtime;
   sites: QuickSites;
@@ -540,6 +558,15 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
     },
   };
 
+  const jev: QuickJev = {
+    classify(payload) {
+      return request<QuickJevClassifyResponse>("/jev/classify", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+  };
+
   const net: QuickNet = {
     fetch(url) {
       return request<QuickNetFetchResponse>("/net/fetch", {
@@ -809,5 +836,5 @@ export function createQuickClient(options: QuickClientOptions = {}): QuickClient
     },
   };
 
-  return { ai, auth, db, files, identity, net, realtime, sites };
+  return { ai, auth, db, files, identity, jev, net, realtime, sites };
 }

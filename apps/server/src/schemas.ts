@@ -89,6 +89,82 @@ export const quickNetFetchResponseSchema = z.object({
   body: z.string().openapi({ description: "Decoded text body, limited to 10 MiB before JSON encoding." }),
 });
 
+export const JEV_MAX_STATE_DEPTH = 32;
+
+const jevQuestionIdSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,63}$/);
+const jevInstructionsSchema = z.string().min(1).max(2000);
+const jevCriterionTextSchema = z.string().min(1).max(1000);
+
+// Iterative and bounded so hostile nesting cannot overflow the stack.
+function withinJsonDepth(root: unknown, maxDepth: number) {
+  const stack: Array<[unknown, number]> = [[root, 0]];
+  while (stack.length) {
+    const [value, depth] = stack.pop()!;
+    if (!value || typeof value !== "object") continue;
+    if (depth + 1 > maxDepth) return false;
+    for (const child of Array.isArray(value) ? value : Object.values(value)) stack.push([child, depth + 1]);
+  }
+  return true;
+}
+
+export const quickJevQuestionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("choice"),
+    instructions: jevInstructionsSchema,
+    criteria: z.record(jevQuestionIdSchema, jevCriterionTextSchema).refine((criteria) => {
+      const count = Object.keys(criteria).length;
+      return count >= 2 && count <= 32;
+    }, { message: "Choice questions require between 2 and 32 options" }),
+  }).strict(),
+  z.object({
+    type: z.literal("score"),
+    instructions: jevInstructionsSchema,
+    criteria: z.array(jevCriterionTextSchema).min(2).max(10),
+  }).strict(),
+  z.object({
+    type: z.literal("bool"),
+    instructions: jevInstructionsSchema,
+    criteria: z.object({ true: jevCriterionTextSchema, false: jevCriterionTextSchema }).strict(),
+  }).strict(),
+]);
+
+export const quickJevClassifyRequestSchema = z.object({
+  state: z.record(z.string(), z.unknown()).refine((state) => withinJsonDepth(state, JEV_MAX_STATE_DEPTH), {
+    message: `State nesting depth must not exceed ${JEV_MAX_STATE_DEPTH}`,
+  }).openapi({ description: "JSON object sent to the classifier as state. Nesting depth is limited to 32." }),
+  questions: z.record(jevQuestionIdSchema, quickJevQuestionSchema).refine((questions) => {
+    const count = Object.keys(questions).length;
+    return count >= 1 && count <= 16;
+  }, { message: "Between 1 and 16 questions are required" }),
+}).strict();
+
+export const quickJevAnswerSchema = z.union([
+  z.object({
+    type: z.literal("choice"),
+    choice: z.string(),
+    probabilities: z.record(z.string(), z.number()),
+    confidence: z.number(),
+  }),
+  z.object({
+    type: z.literal("score"),
+    score: z.number(),
+    confidence: z.number(),
+  }),
+  z.object({
+    type: z.literal("bool"),
+    probability: z.number(),
+  }),
+]);
+
+export const quickJevClassifyResponseSchema = z.object({
+  model: z.string(),
+  answers: z.record(z.string(), quickJevAnswerSchema),
+  usage: z.object({
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+  }).optional(),
+});
+
 export const jsonSchemaSchema = z.object({}).catchall(z.unknown());
 
 export const quickAiChatMessageSchema = z.object({

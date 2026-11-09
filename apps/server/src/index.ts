@@ -13,6 +13,7 @@ import { registerSiteRoutes } from "./routes/sites";
 import { registerSiteStatsRoutes } from "./routes/site-stats";
 import { registerRealtimeRoutes } from "./routes/realtime";
 import { registerNetRoutes } from "./routes/net";
+import { registerJevRoutes } from "./routes/jev";
 import { port, publicApiBase } from "./config";
 import { createPublicFetch } from "./public";
 
@@ -49,6 +50,7 @@ registerSchemaRoutes(app);
 registerCollectionRoutes(app);
 registerFileRoutes(app);
 registerNetRoutes(app);
+registerJevRoutes(app);
 registerSiteStatsRoutes(app);
 registerSiteRoutes(app);
 registerRealtimeRoutes(app);

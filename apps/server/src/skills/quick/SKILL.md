@@ -39,6 +39,7 @@ Base SDK features:
 - DB: `quick.db.collection(name)` with `list/create/get/replace/update/delete/search/subscribe`.
 - Files: `quick.files.upload(file)`, `quick.files.list()`, `quick.files.delete(id)`.
 - Realtime: `quick.realtime.channel(name)` for events; `quick.realtime.presence(name)` for presence/cursors.
+- Classification: `quick.jev.classify({ state, questions })` for typed choice/score/bool answers from Jev.
 - Network: `quick.net.fetch(httpsUrl)` for anonymous, server-side retrieval of constrained public text resources when browser CORS blocks direct access.
 - Sites: `quick.sites.list()`, `quick.sites.get(site)`.
 - AI: `quick.ai.chat(...)`, `quick.ai.agent(...)`, `quick.ai.tools()`.
@@ -55,6 +56,23 @@ console.log(result.url, result.status, result.headers, result.body);
 ```
 
 It requires login and site context. V1 is GET-only, HTTPS/443-only, anonymous upstream, redirect/DNS revalidated, size/time/rate limited, and restricted to RSS/XML, JSON, CSV, ICS, HTML, and plain text. It never forwards browser auth or identity and never exposes `Set-Cookie`. Upstream 4xx/5xx statuses are returned in `result.status`; policy/network failures throw `QuickRequestError`. Treat the returned text as untrusted and sanitize before DOM insertion. Do not use it as a general proxy or to access private/internal resources.
+
+## Jev classification
+
+Use `quick.jev.classify({ state, questions })` when the app needs a typed decision instead of generated prose:
+
+```js
+const { answers } = await quick.jev.classify({
+  state: { message: "Deploy failed on the second test." },
+  questions: {
+    severity: { type: "choice", instructions: "How severe?", criteria: { low: "Low", high: "High" } },
+    blocker: { type: "bool", instructions: "Does it block release?", criteria: { true: "Yes", false: "No" } },
+  },
+});
+console.log(answers.severity.choice, answers.blocker.probability);
+```
+
+Question types are `choice` (2-32 options), `score` (2-10 levels), and `bool`. Requests allow 1-16 questions, a 64 KiB body, and 32 levels of `state` nesting; ids and choice keys must start with a letter and use only `A-Za-z0-9_-` (max 64 characters). It requires login and site context, is rate limited, and returns 503 when the platform has not configured Jev. `state` is sent to TypeSafe, so never include secrets; treat answers as untrusted model output.
 
 ## AI SDK
 

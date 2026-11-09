@@ -1,5 +1,7 @@
 export type JsonBlob = Record<string, unknown>;
 
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 export type QuickDocument = JsonBlob & {
   id: string;
   created_at: string;
@@ -64,6 +66,60 @@ export type QuickNetFetchResponse = {
     "last-modified"?: string;
   };
   body: string;
+};
+
+export type QuickJevChoiceQuestion = {
+  type: "choice";
+  instructions: string;
+  criteria: Record<string, string>;
+};
+
+export type QuickJevScoreQuestion = {
+  type: "score";
+  instructions: string;
+  criteria: string[];
+};
+
+export type QuickJevBoolQuestion = {
+  type: "bool";
+  instructions: string;
+  criteria: { true: string; false: string };
+};
+
+export type QuickJevQuestion = QuickJevChoiceQuestion | QuickJevScoreQuestion | QuickJevBoolQuestion;
+
+export type QuickJevClassifyRequest = {
+  state: Record<string, JsonValue>;
+  questions: Record<string, QuickJevQuestion>;
+};
+
+export type QuickJevChoiceAnswer = {
+  type: "choice";
+  choice: string;
+  probabilities: Record<string, number>;
+  confidence: number;
+};
+
+export type QuickJevScoreAnswer = {
+  type: "score";
+  score: number;
+  confidence: number;
+};
+
+export type QuickJevBoolAnswer = {
+  type: "bool";
+  probability: number;
+};
+
+export type QuickJevAnswer = QuickJevChoiceAnswer | QuickJevScoreAnswer | QuickJevBoolAnswer;
+
+export type QuickJevClassifyResponse = {
+  model: string;
+  answers: Record<string, QuickJevAnswer>;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
 };
 
 export type QuickAiChatRole = "system" | "user" | "assistant";

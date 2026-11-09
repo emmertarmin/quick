@@ -1,5 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { JevConfig } from "./jev";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const runtimeRoot = process.env.QUICK_RUNTIME_ROOT ?? join(repoRoot, "runtime");
@@ -23,6 +24,18 @@ export const maxUploadBytes = 25 * 1024 * 1024;
 export const quickChatEnabled = process.env.QUICK_CHAT_ENABLED?.trim().toLowerCase() === "true";
 export const quickChatProvider = process.env.QUICK_CHAT_PROVIDER?.trim() || "openrouter";
 export const quickChatModel = process.env.QUICK_CHAT_MODEL?.trim() || "";
+
+const jevEnabled = process.env.QUICK_JEV_ENABLED?.trim().toLowerCase() === "true";
+const jevApiKey = process.env.TYPESAFE_API_KEY?.trim();
+
+// Server-only classifier configuration; the key is never logged or returned to clients.
+export const jevConfig: JevConfig | undefined = jevEnabled && jevApiKey
+  ? {
+      apiKey: jevApiKey,
+      model: process.env.QUICK_JEV_MODEL?.trim() || "jev-latest",
+      baseUrl: process.env.QUICK_JEV_BASE_URL?.trim() || "https://api.typesafe.ai/v1/",
+    }
+  : undefined;
 
 const entraClientID = process.env.QUICK_ENTRA_CLIENT_ID?.trim();
 const entraClientSecret = process.env.QUICK_ENTRA_CLIENT_SECRET?.trim();
